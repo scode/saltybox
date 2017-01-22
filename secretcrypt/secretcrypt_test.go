@@ -2,8 +2,8 @@ package secretcrypt
 
 import (
 	"bytes"
-	"testing"
 	"math/rand"
+	"testing"
 )
 
 func passthrough(passphrase string, plaintext []byte) {

@@ -1,15 +1,15 @@
 package varmor
 
 import (
-	"fmt"
 	"encoding/base64"
-	"strings"
 	"errors"
+	"fmt"
+	"strings"
 )
 
 const (
 	_MAGIC_PREFIX = "saltybox"
-	_V1_MAGIC = "saltybox1:"
+	_V1_MAGIC     = "saltybox1:"
 )
 
 func Wrap(body []byte) string {
