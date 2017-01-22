@@ -1,4 +1,4 @@
-package armoredcrypt
+package varmor
 
 import (
 	"testing"
