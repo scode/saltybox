@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"encoding/base64"
 	"strings"
+	"errors"
 )
 
 const (
@@ -19,7 +20,7 @@ func Wrap(body []byte) string {
 
 func Unwrap(varmoredBody string) ([]byte, error) {
 	if len(varmoredBody) < len(_V1_MAGIC) {
-		return nil, fmt.Errorf("input size smaller than magic marker; likely truncated")
+		return nil, errors.New("input size smaller than magic marker; likely truncated")
 	}
 
 	if strings.HasPrefix(varmoredBody, _V1_MAGIC) {
@@ -31,8 +32,8 @@ func Unwrap(varmoredBody string) ([]byte, error) {
 
 		return body, nil
 	} else if strings.HasPrefix(varmoredBody, _MAGIC_PREFIX) {
-		return nil, fmt.Errorf("input claims to be saltybox, but not a version we support")
+		return nil, errors.New("input claims to be saltybox, but not a version we support")
 	} else {
-		return nil, fmt.Errorf("input unrecognized as saltybox data")
+		return nil, errors.New("input unrecognized as saltybox data")
 	}
 }
