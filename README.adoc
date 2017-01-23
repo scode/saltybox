@@ -1,3 +1,7 @@
 = saltybox
 
-Work in progress. Do not use.
+DO NOT USE.
+
+Format and functionality is in flux. If you use this now, you're
+entirely on your own. The wire format almost certainly WILL change
+with no warning.
