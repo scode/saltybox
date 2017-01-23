@@ -9,6 +9,7 @@ import (
 	"golang.org/x/crypto/nacl/secretbox"
 	"golang.org/x/crypto/scrypt"
 	"io"
+	"log"
 )
 
 const (
@@ -45,10 +46,10 @@ func Encrypt(passphrase string, plaintext []byte) ([]byte, error) {
 	var salt [_SALT_LEN]byte
 	n, err := rand.Read(salt[:])
 	if err != nil {
-		panic("rand.Read() should never fail")
+		log.Panic("rand.Read() should never fail")
 	}
 	if n != len(salt) {
-		panic("rand.Read() should always return expected length")
+		log.Panic("rand.Read() should always return expected length")
 	}
 
 	secretKey := genKey(passphrase, salt[:])
@@ -56,10 +57,10 @@ func Encrypt(passphrase string, plaintext []byte) ([]byte, error) {
 	var nounce [_SECRETBOX_NOUNCE_LEN]byte
 	n, err = rand.Read(nounce[:])
 	if err != nil {
-		panic("rand.Read() should never fail")
+		log.Panic("rand.Read() should never fail")
 	}
 	if n != len(nounce) {
-		panic("rand.Read() should always return expected length")
+		log.Panic("rand.Read() should always return expected length")
 	}
 
 	sealedBox := secretbox.Seal(
@@ -71,16 +72,16 @@ func Encrypt(passphrase string, plaintext []byte) ([]byte, error) {
 
 	var buf bytes.Buffer
 	if _, err = buf.Write(salt[:]); err != nil {
-		panic(err)
+		log.Panic(err)
 	}
 	if _, err = buf.Write(nounce[:]); err != nil {
-		panic(err)
+		log.Panic(err)
 	}
 	if err = binary.Write(&buf, binary.BigEndian, int64(len(sealedBox))); err != nil {
-		panic(err)
+		log.Panic(err)
 	}
 	if _, err = buf.Write(sealedBox); err != nil {
-		panic(err)
+		log.Panic(err)
 	}
 
 	return buf.Bytes(), nil
@@ -95,7 +96,7 @@ func Decrypt(passphrase string, crypttext []byte) ([]byte, error) {
 		return nil, fmt.Errorf("input likely truncated while reading salt: %v", err)
 	}
 	if n != len(salt) {
-		panic("expected correct byte count on successfull io.ReadFull()")
+		log.Panic("expected correct byte count on successfull io.ReadFull()")
 	}
 
 	var nounce [_SECRETBOX_NOUNCE_LEN]byte
@@ -104,7 +105,7 @@ func Decrypt(passphrase string, crypttext []byte) ([]byte, error) {
 		return nil, fmt.Errorf("input likely truncated while reading nounce: %v", err)
 	}
 	if n != len(nounce) {
-		panic("expected correct byte count on successfull io.ReadFull()")
+		log.Panic("expected correct byte count on successfull io.ReadFull()")
 	}
 
 	var sealedBoxLen int64
@@ -121,7 +122,7 @@ func Decrypt(passphrase string, crypttext []byte) ([]byte, error) {
 		return nil, errors.New("truncated or corrupt input (while reading sealed box)")
 	}
 	if n != len(sealedBox) {
-		panic("expected correct byte count on successful io.ReadFull()")
+		log.Panic("expected correct byte count on successful io.ReadFull()")
 	}
 
 	secretKey := genKey(passphrase, salt[:])

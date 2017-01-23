@@ -6,6 +6,7 @@ import (
 	"github.com/scode/saltybox/varmor"
 	"golang.org/x/crypto/ssh/terminal"
 	"io/ioutil"
+	"log"
 	"os"
 )
 
@@ -87,29 +88,27 @@ func passphraseDecryptFile(inpath string, outpath string, preader passphraseRead
 }
 
 func main() {
+	log.SetFlags(0)
 	if len(os.Args) < 2 {
-		fmt.Fprintln(os.Stderr, "Usage: %s <command> [-help]")
-		fmt.Fprintln(os.Stderr, "")
-		fmt.Fprintln(os.Stderr, "Commands:")
-		fmt.Fprintln(os.Stderr, "   passphrase-encrypt-file <inpath> <outpath> - encrypt file using passphrase")
-		fmt.Fprintln(os.Stderr, "   passphrase-decrypt-file <inpath> <outpath> - decrypt file using passphrase")
+		log.Printf("Usage: %s <command> [-help]", os.Args[0])
+		log.Print("")
+		log.Print("Commands:")
+		log.Print("   passphrase-encrypt-file <inpath> <outpath> - encrypt file using passphrase")
+		log.Print("   passphrase-decrypt-file <inpath> <outpath> - decrypt file using passphrase")
 		os.Exit(1)
 	}
 
 	if os.Args[1] == "passphrase-encrypt-file" {
 		err := passphraseEncryptFile(os.Args[2], os.Args[3], stdinPassphraseReader{})
 		if err != nil {
-			fmt.Fprintln(os.Stderr, err)
-			os.Exit(1)
+			log.Fatal(err)
 		}
 	} else if os.Args[1] == "passphrase-decrypt-file" {
 		err := passphraseDecryptFile(os.Args[2], os.Args[3], stdinPassphraseReader{})
 		if err != nil {
-			fmt.Fprintln(os.Stderr, err)
-			os.Exit(1)
+			log.Fatal(err)
 		}
 	} else {
-		fmt.Fprintln(os.Stderr, "unrecognized command")
-		os.Exit(1)
+		log.Fatal("unrecognized command")
 	}
 }
