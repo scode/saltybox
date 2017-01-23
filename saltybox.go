@@ -37,22 +37,19 @@ func (r constantPassphraseReader) ReadPassphrase() string {
 func passphraseEncryptFile(inpath string, outpath string, preader passphraseReader) error {
 	plaintext, err := ioutil.ReadFile(inpath)
 	if err != nil {
-		fmt.Fprintln(os.Stderr, "failed to read from %s: %s", inpath, err)
-		return err
+		return fmt.Errorf("failed to read from %s: %s", inpath, err)
 	}
 
 	passphrase := preader.ReadPassphrase()
 	cipherBytes, err := secretcrypt.Encrypt(passphrase, plaintext)
 	if err != nil {
-		fmt.Fprintln(os.Stderr, "encryption failed: %s", err)
-		return err
+		return fmt.Errorf("encryption failed: %s", err)
 	}
 
 	varmoredBytes := varmor.Wrap(cipherBytes)
 	err = ioutil.WriteFile(outpath, []byte(varmoredBytes), 0700)
 	if err != nil {
-		fmt.Fprintln(os.Stderr, "failed to write to %s: %s", outpath, err)
-		return err
+		return fmt.Errorf("failed to write to %s: %s", outpath, err)
 	}
 
 	return nil
@@ -61,27 +58,23 @@ func passphraseEncryptFile(inpath string, outpath string, preader passphraseRead
 func passphraseDecryptFile(inpath string, outpath string, preader passphraseReader) error {
 	varmoredBytes, err := ioutil.ReadFile(inpath)
 	if err != nil {
-		fmt.Fprintln(os.Stderr, "failed to read from %s: %s", inpath, err)
-		return err
+		return fmt.Errorf("failed to read from %s: %s", inpath, err)
 	}
 
 	cipherBytes, err := varmor.Unwrap(string(varmoredBytes))
 	if err != nil {
-		fmt.Fprintln(os.Stderr, "failed to unarmor: %s", err)
-		return err
+		return fmt.Errorf("failed to unarmor: %s", err)
 	}
 
 	passphrase := preader.ReadPassphrase()
 	plaintext, err := secretcrypt.Decrypt(passphrase, cipherBytes)
 	if err != nil {
-		fmt.Fprintln(os.Stderr, "failed to decrypt: %s", err)
-		return err
+		return fmt.Errorf("failed to decrypt: %s", err)
 	}
 
 	err = ioutil.WriteFile(outpath, plaintext, 0700)
 	if err != nil {
-		fmt.Fprintln(os.Stderr, "failed to write to %s: %s", outpath, err)
-		return err
+		return fmt.Errorf("failed to write to %s: %s", outpath, err)
 	}
 
 	return nil
