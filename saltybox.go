@@ -26,6 +26,17 @@ func (r stdinPassphraseReader) ReadPassphrase() string {
 	return string(phrase)
 }
 
+func passphraseEncrypt(passphrase string, plaintext []byte) (string, error) {
+	cipherBytes, err := secretcrypt.Encrypt(passphrase, plaintext)
+	if err != nil {
+		return "", fmt.Errorf("encryption failed: %s", err)
+	}
+
+	varmoredBytes := varmor.Wrap(cipherBytes)
+
+	return string(varmoredBytes), nil
+}
+
 func passphraseEncryptFile(inpath string, outpath string, preader passphraseReader) error {
 	plaintext, err := ioutil.ReadFile(inpath)
 	if err != nil {
@@ -33,18 +44,31 @@ func passphraseEncryptFile(inpath string, outpath string, preader passphraseRead
 	}
 
 	passphrase := preader.ReadPassphrase()
-	cipherBytes, err := secretcrypt.Encrypt(passphrase, plaintext)
+	encryptedString, err := passphraseEncrypt(passphrase, plaintext)
 	if err != nil {
 		return fmt.Errorf("encryption failed: %s", err)
 	}
 
-	varmoredBytes := varmor.Wrap(cipherBytes)
-	err = ioutil.WriteFile(outpath, []byte(varmoredBytes), 0700)
+	err = ioutil.WriteFile(outpath, []byte(encryptedString), 0700)
 	if err != nil {
 		return fmt.Errorf("failed to write to %s: %s", outpath, err)
 	}
 
 	return nil
+}
+
+func passphraseDecrypt(passphrase string, encryptedString string) ([]byte, error) {
+	cipherBytes, err := varmor.Unwrap(encryptedString)
+	if err != nil {
+		return nil, fmt.Errorf("failed to unarmor: %s", err)
+	}
+
+	plaintext, err := secretcrypt.Decrypt(passphrase, cipherBytes)
+	if err != nil {
+		return nil, fmt.Errorf("failed to decrypt: %s", err)
+	}
+
+	return plaintext, nil
 }
 
 func passphraseDecryptFile(inpath string, outpath string, preader passphraseReader) error {
@@ -53,13 +77,8 @@ func passphraseDecryptFile(inpath string, outpath string, preader passphraseRead
 		return fmt.Errorf("failed to read from %s: %s", inpath, err)
 	}
 
-	cipherBytes, err := varmor.Unwrap(string(varmoredBytes))
-	if err != nil {
-		return fmt.Errorf("failed to unarmor: %s", err)
-	}
-
 	passphrase := preader.ReadPassphrase()
-	plaintext, err := secretcrypt.Decrypt(passphrase, cipherBytes)
+	plaintext, err := passphraseDecrypt(passphrase, string(varmoredBytes))
 	if err != nil {
 		return fmt.Errorf("failed to decrypt: %s", err)
 	}
