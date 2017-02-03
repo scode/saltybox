@@ -3,14 +3,16 @@ package main
 import (
 	"bytes"
 	"io/ioutil"
+	"log"
 	"os"
 	"path/filepath"
 	"testing"
 )
 
-func panicOnError(e error) {
-	if e != nil {
-		panic(e)
+func checkedRemove(fname string) {
+	err := os.Remove(fname)
+	if err != nil {
+		log.Panicf("removal of file %s failed: %s", fname, err)
 	}
 }
 
@@ -19,33 +21,30 @@ func TestEncryptDecrypt(t *testing.T) {
 	if err != nil {
 		t.Fatalf("failed creating temp dir: %s", err)
 	}
-	defer func(tempdir string) {
-		panicOnError(os.Remove(tempdir))
-
-	}(tempdir)
+	defer checkedRemove(tempdir)
 
 	plainPath := filepath.Join(tempdir, "plain")
 	err = ioutil.WriteFile(plainPath, []byte("super secret"), 0777)
 	if err != nil {
 		t.Fatalf("failed to write to %s: %s", plainPath, err)
 	}
-	defer func(plainPath string) {
-		panicOnError(os.Remove(plainPath))
-	}(plainPath)
+	defer checkedRemove(plainPath)
 
 	encryptedPath := filepath.Join(tempdir, "encrypted")
-	defer func(encryptedPath string) {
-		panicOnError(os.Remove(encryptedPath))
-	}(encryptedPath)
+	defer checkedRemove(encryptedPath)
 
-	panicOnError(passphraseEncryptFile(plainPath, encryptedPath, constantPassphraseReader{constantPassphrase: "test"}))
+	err = passphraseEncryptFile(plainPath, encryptedPath, constantPassphraseReader{constantPassphrase: "test"})
+	if err != nil {
+		t.Fatalf("encryption failed: %s", err)
+	}
 
 	newPlainPath := filepath.Join(tempdir, "newplain")
-	defer func(newPlainPath string) {
-		panicOnError(os.Remove(newPlainPath))
-	}(newPlainPath)
+	defer checkedRemove(newPlainPath)
 
-	panicOnError(passphraseDecryptFile(encryptedPath, newPlainPath, constantPassphraseReader{constantPassphrase: "test"}))
+	err = passphraseDecryptFile(encryptedPath, newPlainPath, constantPassphraseReader{constantPassphrase: "test"})
+	if err != nil {
+		t.Fatalf("decryption failed: %s", err)
+	}
 
 	newPlainText, err := ioutil.ReadFile(newPlainPath)
 	if err != nil {
