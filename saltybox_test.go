@@ -16,6 +16,14 @@ func checkedRemove(fname string) {
 	}
 }
 
+type constantPassphraseReader struct {
+	constantPassphrase string
+}
+
+func (r constantPassphraseReader) ReadPassphrase() string {
+	return r.constantPassphrase
+}
+
 func TestEncryptDecrypt(t *testing.T) {
 	tempdir, err := ioutil.TempDir(os.TempDir(), "saltyboxtest")
 	if err != nil {

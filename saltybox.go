@@ -16,10 +16,6 @@ type passphraseReader interface {
 
 type stdinPassphraseReader struct{}
 
-type constantPassphraseReader struct {
-	constantPassphrase string
-}
-
 func (r stdinPassphraseReader) ReadPassphrase() string {
 	fmt.Fprint(os.Stderr, "Passphrase (saltybox): ")
 	phrase, err := terminal.ReadPassword(0)
@@ -28,10 +24,6 @@ func (r stdinPassphraseReader) ReadPassphrase() string {
 	}
 
 	return string(phrase)
-}
-
-func (r constantPassphraseReader) ReadPassphrase() string {
-	return r.constantPassphrase
 }
 
 func passphraseEncryptFile(inpath string, outpath string, preader passphraseReader) error {
