@@ -19,22 +19,31 @@ func TestEncryptDecrypt(t *testing.T) {
 	if err != nil {
 		t.Fatalf("failed creating temp dir: %s", err)
 	}
-	defer panicOnError(os.Remove(tempdir))
+	defer func(tempdir string) {
+		panicOnError(os.Remove(tempdir))
+
+	}(tempdir)
 
 	plainPath := filepath.Join(tempdir, "plain")
 	err = ioutil.WriteFile(plainPath, []byte("super secret"), 0777)
 	if err != nil {
 		t.Fatalf("failed to write to %s: %s", plainPath, err)
 	}
-	defer panicOnError(os.Remove(plainPath))
+	defer func(plainPath string) {
+		panicOnError(os.Remove(plainPath))
+	}(plainPath)
 
 	encryptedPath := filepath.Join(tempdir, "encrypted")
-	defer panicOnError(os.Remove(encryptedPath))
+	defer func(encryptedPath string) {
+		panicOnError(os.Remove(encryptedPath))
+	}(encryptedPath)
 
 	panicOnError(passphraseEncryptFile(plainPath, encryptedPath, constantPassphraseReader{constantPassphrase: "test"}))
 
 	newPlainPath := filepath.Join(tempdir, "newplain")
-	defer panicOnError(os.Remove(newPlainPath))
+	defer func(newPlainPath string) {
+		panicOnError(os.Remove(newPlainPath))
+	}(newPlainPath)
 
 	panicOnError(passphraseDecryptFile(encryptedPath, newPlainPath, constantPassphraseReader{constantPassphrase: "test"}))
 
