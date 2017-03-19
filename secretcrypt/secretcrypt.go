@@ -1,3 +1,7 @@
+// Package secretcrypt implements passphrase based encryption/decryption with a simple interface.
+//
+// The format used is guaranteed to never change. Any such change will some in the form of a
+// different package rather than evolving this implementation.
 package secretcrypt
 
 import (
@@ -42,6 +46,12 @@ func genKey(passphrase string, salt []byte) [_KEY_LEN]byte {
 	return secretKeyCopy
 }
 
+// Function Encrypt encrypts bytes using a passphrase.
+//
+// Returns encrypted bytes and an error, if any.
+//
+// The current implementation never returns an error, but callers should not assume that this remains
+// the case.
 func Encrypt(passphrase string, plaintext []byte) ([]byte, error) {
 	var salt [_SALT_LEN]byte
 	n, err := rand.Read(salt[:])
@@ -87,6 +97,16 @@ func Encrypt(passphrase string, plaintext []byte) ([]byte, error) {
 	return buf.Bytes(), nil
 }
 
+// Function Decrypt decrypts a sequence of bytes previously created with Encrypt.
+//
+// Errors conditions include (but may not be limited to):
+//
+//   * The input is truncated.
+//   * The input is otherwise invalid (arbitrary corruption).
+//   * The passphrase does not match that which was used during encryption.
+//
+// There is no way to tell programatically whether an error is due to a bad passphrase or
+// for other reasons.
 func Decrypt(passphrase string, crypttext []byte) ([]byte, error) {
 	cryptReader := bytes.NewReader(crypttext)
 

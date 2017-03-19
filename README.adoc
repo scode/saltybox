@@ -1,7 +1,75 @@
 = saltybox
 
-DO NOT USE.
+Saltybox is a minimalistic tool that implements passphrase based
+encryption of files. Its primary intended use-case is for encrypting
+small amounts of personal data for safe keeping on untrusted media
+(physical or otherwise).
 
-Format and functionality is in flux. If you use this now, you're
-entirely on your own. The wire format almost certainly WILL change
-with no warning.
+Make sure to finish this README completely before deciding to use it.
+
+== Building
+
+```
+go build ./... && go test ./...
+```
+
+== Usage
+
+Here's how to encrypt a file (you will be interactively prompted for a
+passphrase):
+
+```
+./saltybox passphrase-encrypt-file allmysecrets.txt allmysecrets.txt.saltybox
+```
+
+And here is how to decrypt it afterwards (again, you will be
+interactively prompted for a passphrase):
+
+```
+./saltybox passphrase-decrypt-file allmysecrets.txt.saltybox allmysecrets.txt
+```
+
+== Important crypto disclaimer
+
+I am not a cryptographer and the code has not been revewied by any
+cryptographers. Are you one? Please send me feedback
+(peter.schuller@infidyne.com).
+
+Although I certainly did not attempt to invent any new cryptographic
+primitives and rather use well established trusted primitives, there
+is generally a risk that cryptographic primitives are used incorrectly
+when composed into a larger program.
+
+Unfortunately, I have not been able to find a tool like this that
+satisfies my personal criteria for what I want to depend on for
+emergency life recovery media.
+
+== Notable features
+
+* The user interface is incredibly basic and is *not* suitable for scripting.
+* There is no attempt to lock the passphrase into memory. The passphrase
+  may be paged to disk or included in a core dump (should the program
+  crash). You are responsible for the security of the device on which you
+  run this program.
+* The format is based upon well known algorithms with exceedingly
+  simple layering on top. scrypt is used for key stretching, nacl is
+  used for encryption, and a base64 variant is used for encoding. An exact
+  spec would ideally exist, but currently you are left to interpret the
+  source code.
+* The amount of code is very small compared to certain other options and
+  should be easy to audit.
+* Zero dependencies beyond Go itself and official golang.org libraries.
+
+== Guidance for use
+
+I recommend that you store a copy of the program source code and a
+built binary for your platform(s) alongside the encrypted data. This
+ensures you will be able to recover your data even if this project
+disappears from github or is otherwise inaccessible. Including the
+built binary is important to ensure you can reproduce exactly the
+program used to encrypt the data. This is not a well known and well
+replicated program, so do not assume it's available online in an
+emergency.
+
+Further, always test decryption multiple times after encryption to
+ensure that the correct passphrase was used.
