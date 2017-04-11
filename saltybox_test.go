@@ -18,19 +18,44 @@ func checkedRemove(fname string) {
 
 type constantPassphraseReader struct {
 	constantPassphrase string
+	callCount          int
 }
 
-func (r constantPassphraseReader) ReadPassphrase() string {
+func (r *constantPassphraseReader) ReadPassphrase() string {
+	r.callCount += 1
 	return r.constantPassphrase
 }
 
-func TestEncryptDecrypt(t *testing.T) {
+func TestCachingPassphraseReader_ReadPassphrase(t *testing.T) {
+	upstream := constantPassphraseReader{constantPassphrase: "phrase"}
+	caching := cachingPassphraseReader{Upstream: &upstream}
+
+	if caching.ReadPassphrase() != "phrase" {
+		t.Fatal("expected valid passphrase")
+	}
+
+	if upstream.callCount != 1 {
+		t.Fatalf("expected call count 1, was %s", upstream.callCount)
+	}
+
+	// And again, and ensure we didn't call upstream a second time.
+	if caching.ReadPassphrase() != "phrase" {
+		t.Fatal("expected valid passphrase")
+	}
+
+	if upstream.callCount != 1 {
+		t.Fatal("expected call count 1, was %s", upstream.callCount)
+	}
+}
+
+func TestEncryptDecryptUpdate(t *testing.T) {
 	tempdir, err := ioutil.TempDir(os.TempDir(), "saltyboxtest")
 	if err != nil {
 		t.Fatalf("failed creating temp dir: %s", err)
 	}
 	defer checkedRemove(tempdir)
 
+	// Encrypt
 	plainPath := filepath.Join(tempdir, "plain")
 	err = ioutil.WriteFile(plainPath, []byte("super secret"), 0777)
 	if err != nil {
@@ -41,7 +66,7 @@ func TestEncryptDecrypt(t *testing.T) {
 	encryptedPath := filepath.Join(tempdir, "encrypted")
 	defer checkedRemove(encryptedPath)
 
-	err = passphraseEncryptFile(plainPath, encryptedPath, constantPassphraseReader{constantPassphrase: "test"})
+	err = passphraseEncryptFile(plainPath, encryptedPath, &constantPassphraseReader{constantPassphrase: "test"})
 	if err != nil {
 		t.Fatalf("encryption failed: %s", err)
 	}
@@ -49,7 +74,8 @@ func TestEncryptDecrypt(t *testing.T) {
 	newPlainPath := filepath.Join(tempdir, "newplain")
 	defer checkedRemove(newPlainPath)
 
-	err = passphraseDecryptFile(encryptedPath, newPlainPath, constantPassphraseReader{constantPassphrase: "test"})
+	// Decrypt
+	err = passphraseDecryptFile(encryptedPath, newPlainPath, &constantPassphraseReader{constantPassphrase: "test"})
 	if err != nil {
 		t.Fatalf("decryption failed: %s", err)
 	}
@@ -60,6 +86,41 @@ func TestEncryptDecrypt(t *testing.T) {
 	}
 
 	if !bytes.Equal(newPlainText, []byte("super secret")) {
+		t.Fatal("plain text does not match original plain text")
+	}
+
+	// Update with wrong passphrase
+	updatedPlainPath := filepath.Join(tempdir, "updatedplain")
+	err = ioutil.WriteFile(updatedPlainPath, []byte("updated super secret"), 0777)
+	if err != nil {
+		t.Fatalf("failed to write to %s: %s", updatedPlainPath, err)
+	}
+	defer checkedRemove(updatedPlainPath)
+
+	err = passphraseUpdateFile(updatedPlainPath, encryptedPath, &constantPassphraseReader{constantPassphrase: "wrong"})
+	if err == nil {
+		t.Fatal("did NOT fail to update file despite invalid passpharse")
+	}
+
+	// Update with right passphrase
+	err = passphraseUpdateFile(updatedPlainPath, encryptedPath, &constantPassphraseReader{constantPassphrase: "test"})
+	if err != nil {
+		t.Fatalf("failed to update file: %s", err)
+	}
+
+	newUpdatedPlainPath := filepath.Join(tempdir, "newupdatedplain")
+	defer checkedRemove(newUpdatedPlainPath)
+	err = passphraseDecryptFile(encryptedPath, newUpdatedPlainPath, &constantPassphraseReader{constantPassphrase: "test"})
+	if err != nil {
+		t.Fatalf("decryption failed: %s", err)
+	}
+
+	newUpdatedPlainText, err := ioutil.ReadFile(newUpdatedPlainPath)
+	if err != nil {
+		t.Fatalf("failed to read from %s: %s", newUpdatedPlainPath, err)
+	}
+
+	if !bytes.Equal(newUpdatedPlainText, []byte("updated super secret")) {
 		t.Fatal("plain text does not match original plain text")
 	}
 }
@@ -81,7 +142,7 @@ func TestBackwardsCompatibility(t *testing.T) {
 	newPlainPath := filepath.Join(tempdir, "newplain")
 	defer checkedRemove(newPlainPath)
 
-	err = passphraseDecryptFile(encryptedPath, newPlainPath, constantPassphraseReader{constantPassphrase: "test"})
+	err = passphraseDecryptFile(encryptedPath, newPlainPath, &constantPassphraseReader{constantPassphrase: "test"})
 	if err != nil {
 		t.Fatalf("decryption failed: %s", err)
 	}

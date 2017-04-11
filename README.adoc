@@ -29,6 +29,16 @@ interactively prompted for a passphrase):
 ./saltybox passphrase-decrypt-file allmysecrets.txt.saltybox allmysecrets.txt
 ```
 
+And here is how to update a previously encrypted file in a manner that
+does not allow accidental changing of the passphrase
+(`passphrase-update-file` will first decrypt the existing file using
+the passphrase to validate that the passphrase is correct, and then
+encrypt the new contents):
+
+```
+./saltybox passphrase-update-file allmysecrets-updated.txt allmysecrets.txt.saltybox
+```
+
 == Important crypto disclaimer
 
 I am not a cryptographer and the code has not been revewied by any
@@ -71,5 +81,7 @@ program used to encrypt the data. This is not a well known and well
 replicated program, so do not assume it's available online in an
 emergency.
 
-Further, always test decryption multiple times after encryption to
-ensure that the correct passphrase was used.
+Further, always use `passphrase-update-file` when updating an existing
+encrypted file. This avoids the possibility of accidentally changing
+the passphrase by providing a different passphrase than what was used
+to encrypt the existing file.

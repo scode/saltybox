@@ -8,6 +8,7 @@ import (
 	"io/ioutil"
 	"log"
 	"os"
+	"path"
 )
 
 type passphraseReader interface {
@@ -16,7 +17,17 @@ type passphraseReader interface {
 
 type stdinPassphraseReader struct{}
 
-func (r stdinPassphraseReader) ReadPassphrase() string {
+// cachingPassphraseReader will wrap a passphraseReader by adding caching.
+//
+// This is useful to allow "at most once" semantics when reading the passphrase, while
+// still lazily deferring the first invocation.
+type cachingPassphraseReader struct {
+	Upstream         passphraseReader
+	cachedPassphrase string
+	cached           bool
+}
+
+func (r *stdinPassphraseReader) ReadPassphrase() string {
 	fmt.Fprint(os.Stderr, "Passphrase (saltybox): ")
 	phrase, err := terminal.ReadPassword(0)
 	if err != nil {
@@ -24,6 +35,15 @@ func (r stdinPassphraseReader) ReadPassphrase() string {
 	}
 
 	return string(phrase)
+}
+
+func (r *cachingPassphraseReader) ReadPassphrase() string {
+	if !r.cached {
+		r.cachedPassphrase = r.Upstream.ReadPassphrase()
+		r.cached = true
+	}
+
+	return r.cachedPassphrase
 }
 
 func passphraseEncrypt(passphrase string, plaintext []byte) (string, error) {
@@ -91,6 +111,62 @@ func passphraseDecryptFile(inpath string, outpath string, preader passphraseRead
 	return nil
 }
 
+func passphraseUpdateFile(plainfile string, cryptfile string, preader passphraseReader) error {
+	// Decrypt existing file in order to validate that the provided passphrase is correct,
+	// in order to prevent accidental changing of the passphrase (but we discard the plain
+	// text).
+	varmoredBytes, err := ioutil.ReadFile(cryptfile)
+	if err != nil {
+		return fmt.Errorf("failed to read from %s: %s", cryptfile, err)
+	}
+
+	cachingPreader := cachingPassphraseReader{Upstream: preader}
+
+	passphrase := cachingPreader.ReadPassphrase()
+	_, err = passphraseDecrypt(passphrase, string(varmoredBytes))
+	if err != nil {
+		return fmt.Errorf("failed to decrypt: %s", err)
+	}
+
+	// Encrypt contents into the target file using atomic semantics (write to tempfile, fsync()
+	// and rename). This guarantees that the resulting file will either be the old file or the new
+	// file, but never corrupt (assuming a correctly functioning filesystem I/O stack).
+	cryptDir, _ := path.Split(cryptfile)
+
+	tmpfile, err := ioutil.TempFile(cryptDir, "saltybox-update-tmp")
+	if err != nil {
+		return fmt.Errorf("failed to create tempfile: %s", err)
+	}
+	defer os.Remove(tmpfile.Name())
+	defer tmpfile.Close()
+
+	err = passphraseEncryptFile(plainfile, tmpfile.Name(), &cachingPreader)
+	if err != nil {
+		return fmt.Errorf("failed to encrypt failed: %s", err)
+	}
+
+	// Re-open the file to ensure that we are Sync():ing the correct file. Technically this is not
+	// required because passphraseEncryptFile() will cause the target file to be truncated rather than recreated.
+	// However, let's defensively avoid relying on that subtle behavior and re-open the file.
+	reopenedTmpFile, err := os.Open(tmpfile.Name())
+	if err != nil {
+		return fmt.Errorf("failed to re-open tempfile after encryption: %s", err)
+	}
+	defer reopenedTmpFile.Close()
+
+	err = reopenedTmpFile.Sync()
+	if err != nil {
+		return fmt.Errorf("failed to sync file prior to rename: %s", err)
+	}
+
+	err = os.Rename(reopenedTmpFile.Name(), cryptfile)
+	if err != nil {
+		return fmt.Errorf("failed to rename to target file: %s", err)
+	}
+
+	return nil
+}
+
 func main() {
 	log.SetFlags(0)
 	if len(os.Args) < 2 {
@@ -99,16 +175,22 @@ func main() {
 		log.Print("Commands:")
 		log.Print("   passphrase-encrypt-file <inpath> <outpath> - encrypt file using passphrase")
 		log.Print("   passphrase-decrypt-file <inpath> <outpath> - decrypt file using passphrase")
+		log.Print("   passphrase-update-file  <inpath> <cryptpath> - update an encrypted file")
 		os.Exit(1)
 	}
 
 	if os.Args[1] == "passphrase-encrypt-file" {
-		err := passphraseEncryptFile(os.Args[2], os.Args[3], stdinPassphraseReader{})
+		err := passphraseEncryptFile(os.Args[2], os.Args[3], &stdinPassphraseReader{})
 		if err != nil {
 			log.Fatal(err)
 		}
 	} else if os.Args[1] == "passphrase-decrypt-file" {
-		err := passphraseDecryptFile(os.Args[2], os.Args[3], stdinPassphraseReader{})
+		err := passphraseDecryptFile(os.Args[2], os.Args[3], &stdinPassphraseReader{})
+		if err != nil {
+			log.Fatal(err)
+		}
+	} else if os.Args[1] == "passphrase-update-file" {
+		err := passphraseUpdateFile(os.Args[2], os.Args[3], &stdinPassphraseReader{})
 		if err != nil {
 			log.Fatal(err)
 		}
