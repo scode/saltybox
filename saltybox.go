@@ -142,7 +142,7 @@ func passphraseUpdateFile(plainfile string, cryptfile string, preader passphrase
 
 	err = passphraseEncryptFile(plainfile, tmpfile.Name(), &cachingPreader)
 	if err != nil {
-		return fmt.Errorf("failed to encrypt failed: %s", err)
+		return fmt.Errorf("failed to encrypt: %s", err)
 	}
 
 	// Re-open the file to ensure that we are Sync():ing the correct file. Technically this is not
