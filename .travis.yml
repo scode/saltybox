@@ -9,3 +9,4 @@ script:
   - go build $(glide novendor)
   - go test -v $(glide novendor)
   - glide novendor | xargs -n1 golint
+  - go vet $(glide novendor)

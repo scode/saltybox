@@ -35,7 +35,7 @@ func TestCachingPassphraseReader_ReadPassphrase(t *testing.T) {
 	}
 
 	if upstream.callCount != 1 {
-		t.Fatalf("expected call count 1, was %s", upstream.callCount)
+		t.Fatalf("expected call count 1, was %d", upstream.callCount)
 	}
 
 	// And again, and ensure we didn't call upstream a second time.
@@ -44,7 +44,7 @@ func TestCachingPassphraseReader_ReadPassphrase(t *testing.T) {
 	}
 
 	if upstream.callCount != 1 {
-		t.Fatal("expected call count 1, was %s", upstream.callCount)
+		t.Fatalf("expected call count 1, was %d", upstream.callCount)
 	}
 }
 
