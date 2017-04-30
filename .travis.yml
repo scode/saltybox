@@ -5,8 +5,10 @@ go:
 install:
   - go get github.com/Masterminds/glide
   - go get github.com/golang/lint/golint
+  - go get github.com/kisielk/errcheck
 script:
   - go build $(glide novendor)
   - go test -v $(glide novendor)
+  - errcheck $(glide novendor)
   - glide novendor | xargs -n1 golint
   - go vet $(glide novendor)
