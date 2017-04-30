@@ -111,7 +111,7 @@ func passphraseDecryptFile(inpath string, outpath string, preader passphraseRead
 	return nil
 }
 
-func passphraseUpdateFile(plainfile string, cryptfile string, preader passphraseReader) error {
+func passphraseUpdateFile(plainfile string, cryptfile string, preader passphraseReader) (err error) {
 	// Decrypt existing file in order to validate that the provided passphrase is correct,
 	// in order to prevent accidental changing of the passphrase (but we discard the plain
 	// text).
@@ -137,8 +137,14 @@ func passphraseUpdateFile(plainfile string, cryptfile string, preader passphrase
 	if err != nil {
 		return fmt.Errorf("failed to create tempfile: %s", err)
 	}
-	defer os.Remove(tmpfile.Name())
-	defer tmpfile.Close()
+	defer func(fname string) {
+		if _, err := os.Stat(fname); !os.IsNotExist(err) {
+			err = os.Remove(fname)
+		}
+	}(tmpfile.Name())
+	defer func(tmpfile *os.File) {
+		err = tmpfile.Close()
+	}(tmpfile)
 
 	err = passphraseEncryptFile(plainfile, tmpfile.Name(), &cachingPreader)
 	if err != nil {
@@ -152,7 +158,9 @@ func passphraseUpdateFile(plainfile string, cryptfile string, preader passphrase
 	if err != nil {
 		return fmt.Errorf("failed to re-open tempfile after encryption: %s", err)
 	}
-	defer reopenedTmpFile.Close()
+	defer func(f *os.File) {
+		err = f.Close()
+	}(reopenedTmpFile)
 
 	err = reopenedTmpFile.Sync()
 	if err != nil {
