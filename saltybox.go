@@ -170,7 +170,7 @@ func passphraseUpdateFile(plainfile string, cryptfile string, preader passphrase
 func main() {
 	log.SetFlags(0)
 	if len(os.Args) < 2 {
-		log.Printf("Usage: %s <command> [-help]", os.Args[0])
+		log.Printf("Usage: %s <command> <args...>", os.Args[0])
 		log.Print("")
 		log.Print("Commands:")
 		log.Print("   passphrase-encrypt-file <inpath> <outpath> - encrypt file using passphrase")
