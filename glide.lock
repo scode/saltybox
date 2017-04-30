@@ -1,0 +1,17 @@
+hash: e5251dfb1f8c44b526c234e4801e37ee98589b506f127964a8555d2870c18f74
+updated: 2017-04-30T00:55:54.420850187-07:00
+imports:
+- name: golang.org/x/crypto
+  version: c7af5bf2638a1164f2eb5467c39c6cffbd13a02e
+  subpackages:
+  - nacl/secretbox
+  - pbkdf2
+  - poly1305
+  - salsa20/salsa
+  - scrypt
+  - ssh/terminal
+- name: golang.org/x/sys
+  version: 9ccfe848b9db8435a24c424abbc07a921adf1df5
+  subpackages:
+  - unix
+testImports: []
