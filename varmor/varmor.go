@@ -12,15 +12,15 @@ import (
 )
 
 const (
-	_MAGIC_PREFIX = "saltybox"
-	_V1_MAGIC     = "saltybox1:"
+	magicPrefix = "saltybox"
+	v1Magic     = "saltybox1:"
 )
 
 // Wrap an array of bytes in armor, returning the resulting string.
 func Wrap(body []byte) string {
 	encoded := base64.RawURLEncoding.EncodeToString(body)
 
-	return fmt.Sprintf("%s%s", _V1_MAGIC, encoded)
+	return fmt.Sprintf("%s%s", v1Magic, encoded)
 }
 
 // Unwrap an armored string.
@@ -32,19 +32,19 @@ func Wrap(body []byte) string {
 //   * Input indicates a future version of of the format that we do not support.
 //   * Input does not appear to be the the result of Wrap().
 func Unwrap(varmoredBody string) ([]byte, error) {
-	if len(varmoredBody) < len(_V1_MAGIC) {
+	if len(varmoredBody) < len(v1Magic) {
 		return nil, errors.New("input size smaller than magic marker; likely truncated")
 	}
 
-	if strings.HasPrefix(varmoredBody, _V1_MAGIC) {
-		armoredBody := strings.TrimPrefix(varmoredBody, _V1_MAGIC)
+	if strings.HasPrefix(varmoredBody, v1Magic) {
+		armoredBody := strings.TrimPrefix(varmoredBody, v1Magic)
 		body, err := base64.RawURLEncoding.DecodeString(armoredBody)
 		if err != nil {
 			return nil, fmt.Errorf("base64 decoding failed: %s", err)
 		}
 
 		return body, nil
-	} else if strings.HasPrefix(varmoredBody, _MAGIC_PREFIX) {
+	} else if strings.HasPrefix(varmoredBody, magicPrefix) {
 		return nil, errors.New("input claims to be saltybox, but not a version we support")
 	} else {
 		return nil, errors.New("input unrecognized as saltybox data")

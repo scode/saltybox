@@ -22,7 +22,7 @@ type constantPassphraseReader struct {
 }
 
 func (r *constantPassphraseReader) ReadPassphrase() string {
-	r.callCount += 1
+	r.callCount++
 	return r.constantPassphrase
 }
 

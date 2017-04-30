@@ -17,43 +17,43 @@ import (
 )
 
 const (
-	_SALT_LEN = 8 // Length of salt in number of bytes.
+	saltLen = 8 // Length of salt in number of bytes.
 
 	// These values are the recommended ones for 2009, except another power of 2 added to N for 32768 instead
 	// of 16384. See:
 	//
 	//   https://godoc.org/golang.org/x/crypto/scrypt
 	//   http://stackoverflow.com/questions/11126315/what-are-optimal-scrypt-work-factors
-	_SCRYPT_N = 32768
-	_SCRYPT_R = 8
-	_SCRYPT_P = 1
+	scryptN = 32768
+	scryptR = 8
+	scryptP = 1
 
-	_KEY_LEN              = 32
-	_SECRETBOX_NOUNCE_LEN = 24
+	keyLen             = 32
+	secretboxNounceLen = 24
 )
 
-func genKey(passphrase string, salt []byte) [_KEY_LEN]byte {
-	secretKey, err := scrypt.Key([]byte(passphrase), salt[:], _SCRYPT_N, _SCRYPT_R, _SCRYPT_P, _KEY_LEN)
+func genKey(passphrase string, salt []byte) [keyLen]byte {
+	secretKey, err := scrypt.Key([]byte(passphrase), salt[:], scryptN, scryptR, scryptP, keyLen)
 	if err != nil {
 		panic(err)
 	}
 
-	// Copy merely to obtain a value of type [_KEY_LEN]byte for the caller's convenience (due to
+	// Copy merely to obtain a value of type [keyLen]byte for the caller's convenience (due to
 	// secretbox's API).
-	var secretKeyCopy [_KEY_LEN]byte
+	var secretKeyCopy [keyLen]byte
 	copy(secretKeyCopy[:], secretKey)
 
 	return secretKeyCopy
 }
 
-// Function Encrypt encrypts bytes using a passphrase.
+// Encrypt encrypts bytes using a passphrase.
 //
 // Returns encrypted bytes and an error, if any.
 //
 // The current implementation never returns an error, but callers should not assume that this remains
 // the case.
 func Encrypt(passphrase string, plaintext []byte) ([]byte, error) {
-	var salt [_SALT_LEN]byte
+	var salt [saltLen]byte
 	n, err := rand.Read(salt[:])
 	if err != nil {
 		log.Panic("rand.Read() should never fail")
@@ -64,7 +64,7 @@ func Encrypt(passphrase string, plaintext []byte) ([]byte, error) {
 
 	secretKey := genKey(passphrase, salt[:])
 
-	var nounce [_SECRETBOX_NOUNCE_LEN]byte
+	var nounce [secretboxNounceLen]byte
 	n, err = rand.Read(nounce[:])
 	if err != nil {
 		log.Panic("rand.Read() should never fail")
@@ -97,7 +97,7 @@ func Encrypt(passphrase string, plaintext []byte) ([]byte, error) {
 	return buf.Bytes(), nil
 }
 
-// Function Decrypt decrypts a sequence of bytes previously created with Encrypt.
+// Decrypt decrypts a sequence of bytes previously created with Encrypt.
 //
 // Errors conditions include (but may not be limited to):
 //
@@ -110,7 +110,7 @@ func Encrypt(passphrase string, plaintext []byte) ([]byte, error) {
 func Decrypt(passphrase string, crypttext []byte) ([]byte, error) {
 	cryptReader := bytes.NewReader(crypttext)
 
-	var salt [_SALT_LEN]byte
+	var salt [saltLen]byte
 	n, err := io.ReadFull(cryptReader, salt[:])
 	if err != nil {
 		return nil, fmt.Errorf("input likely truncated while reading salt: %v", err)
@@ -119,7 +119,7 @@ func Decrypt(passphrase string, crypttext []byte) ([]byte, error) {
 		log.Panic("expected correct byte count on successfull io.ReadFull()")
 	}
 
-	var nounce [_SECRETBOX_NOUNCE_LEN]byte
+	var nounce [secretboxNounceLen]byte
 	n, err = io.ReadFull(cryptReader, nounce[:])
 	if err != nil {
 		return nil, fmt.Errorf("input likely truncated while reading nounce: %v", err)
