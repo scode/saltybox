@@ -10,7 +10,7 @@ Make sure to finish this README completely before deciding to use it.
 == Building
 
 ```
-go build ./... && go test ./...
+go build saltybox.go
 ```
 
 == Usage
