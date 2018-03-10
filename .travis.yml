@@ -2,13 +2,24 @@ language: go
 go:
   - 1.7
   - 1.8
+  - 1.9
+
+env:
+  - DEP_VERSION="0.4.1"
+
+before_install:
+  - curl -L -s https://github.com/golang/dep/releases/download/v${DEP_VERSION}/dep-linux-amd64 -o $GOPATH/bin/dep
+  - chmod +x $GOPATH/bin/dep
+
 install:
-  - go get github.com/Masterminds/glide
   - go get github.com/golang/lint/golint
   - go get github.com/kisielk/errcheck
+  - dep ensure
+
+# XXX: What's a good `glide novendor` equivalent when using dep?
 script:
-  - go build $(glide novendor)
-  - go test -v $(glide novendor)
-  - errcheck $(glide novendor)
-  - glide novendor | xargs -n1 golint
-  - go vet $(glide novendor)
+  - go build
+  - go test -v . ./varmor/... ./secretcrypt/...
+  - errcheck . ./varmor/... ./secretcrypt/...
+  - golint . ./varmor/... ./secretcrypt/...
+  - go vet . ./varmor/... ./secretcrypt/...
