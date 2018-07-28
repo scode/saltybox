@@ -2,18 +2,16 @@ package main
 
 import (
 	"bytes"
+	"github.com/stretchr/testify/assert"
 	"io/ioutil"
-	"log"
 	"os"
 	"path/filepath"
 	"testing"
 )
 
-func checkedRemove(fname string) {
+func checkedRemove(t *testing.T, fname string) {
 	err := os.Remove(fname)
-	if err != nil {
-		log.Panicf("removal of file %s failed: %s", fname, err)
-	}
+	assert.NoError(t, err, "removal of file %s filed: %v", fname, err)
 }
 
 type constantPassphraseReader struct {
@@ -30,22 +28,13 @@ func TestCachingPassphraseReader_ReadPassphrase(t *testing.T) {
 	upstream := constantPassphraseReader{constantPassphrase: "phrase"}
 	caching := cachingPassphraseReader{Upstream: &upstream}
 
-	if caching.ReadPassphrase() != "phrase" {
-		t.Fatal("expected valid passphrase")
-	}
+	// The first read should penetrate the cache.
+	assert.Equal(t, "phrase", caching.ReadPassphrase())
+	assert.Equal(t, 1, upstream.callCount)
 
-	if upstream.callCount != 1 {
-		t.Fatalf("expected call count 1, was %d", upstream.callCount)
-	}
-
-	// And again, and ensure we didn't call upstream a second time.
-	if caching.ReadPassphrase() != "phrase" {
-		t.Fatal("expected valid passphrase")
-	}
-
-	if upstream.callCount != 1 {
-		t.Fatalf("expected call count 1, was %d", upstream.callCount)
-	}
+	// But the second read should not (so callCount should remain the same).
+	assert.Equal(t, "phrase", caching.ReadPassphrase())
+	assert.Equal(t, 1, upstream.callCount)
 }
 
 func TestEncryptDecryptUpdate(t *testing.T) {
@@ -53,7 +42,7 @@ func TestEncryptDecryptUpdate(t *testing.T) {
 	if err != nil {
 		t.Fatalf("failed creating temp dir: %s", err)
 	}
-	defer checkedRemove(tempdir)
+	defer checkedRemove(t, tempdir)
 
 	// Encrypt
 	plainPath := filepath.Join(tempdir, "plain")
@@ -61,10 +50,10 @@ func TestEncryptDecryptUpdate(t *testing.T) {
 	if err != nil {
 		t.Fatalf("failed to write to %s: %s", plainPath, err)
 	}
-	defer checkedRemove(plainPath)
+	defer checkedRemove(t, plainPath)
 
 	encryptedPath := filepath.Join(tempdir, "encrypted")
-	defer checkedRemove(encryptedPath)
+	defer checkedRemove(t, encryptedPath)
 
 	err = passphraseEncryptFile(plainPath, encryptedPath, &constantPassphraseReader{constantPassphrase: "test"})
 	if err != nil {
@@ -72,7 +61,7 @@ func TestEncryptDecryptUpdate(t *testing.T) {
 	}
 
 	newPlainPath := filepath.Join(tempdir, "newplain")
-	defer checkedRemove(newPlainPath)
+	defer checkedRemove(t, newPlainPath)
 
 	// Decrypt
 	err = passphraseDecryptFile(encryptedPath, newPlainPath, &constantPassphraseReader{constantPassphrase: "test"})
@@ -95,7 +84,7 @@ func TestEncryptDecryptUpdate(t *testing.T) {
 	if err != nil {
 		t.Fatalf("failed to write to %s: %s", updatedPlainPath, err)
 	}
-	defer checkedRemove(updatedPlainPath)
+	defer checkedRemove(t, updatedPlainPath)
 
 	err = passphraseUpdateFile(updatedPlainPath, encryptedPath, &constantPassphraseReader{constantPassphrase: "wrong"})
 	if err == nil {
@@ -109,7 +98,7 @@ func TestEncryptDecryptUpdate(t *testing.T) {
 	}
 
 	newUpdatedPlainPath := filepath.Join(tempdir, "newupdatedplain")
-	defer checkedRemove(newUpdatedPlainPath)
+	defer checkedRemove(t, newUpdatedPlainPath)
 	err = passphraseDecryptFile(encryptedPath, newUpdatedPlainPath, &constantPassphraseReader{constantPassphrase: "test"})
 	if err != nil {
 		t.Fatalf("decryption failed: %s", err)
@@ -130,17 +119,17 @@ func TestBackwardsCompatibility(t *testing.T) {
 	if err != nil {
 		t.Fatalf("failed creating temp dir: %s", err)
 	}
-	defer checkedRemove(tempdir)
+	defer checkedRemove(t, tempdir)
 
 	encryptedPath := filepath.Join(tempdir, "plain")
 	err = ioutil.WriteFile(encryptedPath, []byte("saltybox1:RF0qX8mpCMXVBq6zxHfamdiT64s6Pwvb99Qj9gV61sMAAAAAAAAAFE6RVTWMhBCMJGL0MmgdDUBHoJaW"), 0777)
 	if err != nil {
 		t.Fatalf("failed to write to %s: %s", encryptedPath, err)
 	}
-	defer checkedRemove(encryptedPath)
+	defer checkedRemove(t, encryptedPath)
 
 	newPlainPath := filepath.Join(tempdir, "newplain")
-	defer checkedRemove(newPlainPath)
+	defer checkedRemove(t, newPlainPath)
 
 	err = passphraseDecryptFile(encryptedPath, newPlainPath, &constantPassphraseReader{constantPassphrase: "test"})
 	if err != nil {
