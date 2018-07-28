@@ -28,7 +28,10 @@ type cachingPassphraseReader struct {
 }
 
 func (r *stdinPassphraseReader) ReadPassphrase() string {
-	fmt.Fprint(os.Stderr, "Passphrase (saltybox): ")
+	_, err := fmt.Fprint(os.Stderr, "Passphrase (saltybox): ")
+	if err != nil {
+		panic(err)
+	}
 	phrase, err := terminal.ReadPassword(0)
 	if err != nil {
 		panic(fmt.Sprintf("failure reading passphrase: %s", err))
