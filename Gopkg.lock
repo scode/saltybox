@@ -2,6 +2,24 @@
 
 
 [[projects]]
+  name = "github.com/davecgh/go-spew"
+  packages = ["spew"]
+  revision = "346938d642f2ec3594ed81d874461961cd0faa76"
+  version = "v1.1.0"
+
+[[projects]]
+  name = "github.com/pmezard/go-difflib"
+  packages = ["difflib"]
+  revision = "792786c7400a136282c1664665ae0a8db921c6c2"
+  version = "v1.0.0"
+
+[[projects]]
+  name = "github.com/stretchr/testify"
+  packages = ["assert"]
+  revision = "f35b8ab0b5a2cef36673838d662e249dd9c94686"
+  version = "v1.2.2"
+
+[[projects]]
   name = "golang.org/x/crypto"
   packages = [
     "nacl/secretbox",
@@ -21,6 +39,6 @@
 [solve-meta]
   analyzer-name = "dep"
   analyzer-version = 1
-  inputs-digest = "e575b5c2a1fd78f15fcccffe136bd0d1bdfc73197d2efb4bd0d4f2c2ab4f6170"
+  inputs-digest = "7b2893e1e36a828ca79469805ee58749b47c46611a54970ed6fa568c34ab7b3f"
   solver-name = "gps-cdcl"
   solver-version = 1
