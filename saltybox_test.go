@@ -39,16 +39,16 @@ func TestCachingPassphraseReader_ReadPassphrase(t *testing.T) {
 
 func TestEncryptDecryptUpdate(t *testing.T) {
 	tempdir, err := ioutil.TempDir(os.TempDir(), "saltyboxtest")
-	if err != nil {
-		t.Fatalf("failed creating temp dir: %s", err)
+	if ! assert.NoError(t, err) {
+		assert.FailNow(t, "failed to create temporary directory")
 	}
 	defer checkedRemove(t, tempdir)
 
 	// Encrypt
 	plainPath := filepath.Join(tempdir, "plain")
 	err = ioutil.WriteFile(plainPath, []byte("super secret"), 0777)
-	if err != nil {
-		t.Fatalf("failed to write to %s: %s", plainPath, err)
+	if ! assert.NoError(t, err) {
+		assert.FailNow(t, "failed to write secret to file")
 	}
 	defer checkedRemove(t, plainPath)
 
@@ -56,62 +56,41 @@ func TestEncryptDecryptUpdate(t *testing.T) {
 	defer checkedRemove(t, encryptedPath)
 
 	err = passphraseEncryptFile(plainPath, encryptedPath, &constantPassphraseReader{constantPassphrase: "test"})
-	if err != nil {
-		t.Fatalf("encryption failed: %s", err)
-	}
+	assert.NoError(t, err)
 
 	newPlainPath := filepath.Join(tempdir, "newplain")
 	defer checkedRemove(t, newPlainPath)
 
 	// Decrypt
 	err = passphraseDecryptFile(encryptedPath, newPlainPath, &constantPassphraseReader{constantPassphrase: "test"})
-	if err != nil {
-		t.Fatalf("decryption failed: %s", err)
-	}
+	assert.NoError(t, err)
 
 	newPlainText, err := ioutil.ReadFile(newPlainPath)
-	if err != nil {
-		t.Fatalf("failed to read from %s: %s", newPlainPath, err)
-	}
-
-	if !bytes.Equal(newPlainText, []byte("super secret")) {
-		t.Fatal("plain text does not match original plain text")
-	}
+	assert.NoError(t, err)
+	assert.EqualValues(t, []byte("super secret"), newPlainText)
 
 	// Update with wrong passphrase
 	updatedPlainPath := filepath.Join(tempdir, "updatedplain")
 	err = ioutil.WriteFile(updatedPlainPath, []byte("updated super secret"), 0777)
-	if err != nil {
-		t.Fatalf("failed to write to %s: %s", updatedPlainPath, err)
-	}
+	assert.NoError(t, err)
 	defer checkedRemove(t, updatedPlainPath)
 
 	err = passphraseUpdateFile(updatedPlainPath, encryptedPath, &constantPassphraseReader{constantPassphrase: "wrong"})
-	if err == nil {
-		t.Fatal("did NOT fail to update file despite invalid passpharse")
-	}
+	assert.Error(t, err)
 
 	// Update with right passphrase
 	err = passphraseUpdateFile(updatedPlainPath, encryptedPath, &constantPassphraseReader{constantPassphrase: "test"})
-	if err != nil {
-		t.Fatalf("failed to update file: %s", err)
-	}
+	assert.NoError(t, err)
 
 	newUpdatedPlainPath := filepath.Join(tempdir, "newupdatedplain")
 	defer checkedRemove(t, newUpdatedPlainPath)
 	err = passphraseDecryptFile(encryptedPath, newUpdatedPlainPath, &constantPassphraseReader{constantPassphrase: "test"})
-	if err != nil {
-		t.Fatalf("decryption failed: %s", err)
-	}
+	assert.NoError(t, err)
 
 	newUpdatedPlainText, err := ioutil.ReadFile(newUpdatedPlainPath)
-	if err != nil {
-		t.Fatalf("failed to read from %s: %s", newUpdatedPlainPath, err)
-	}
+	assert.NoError(t, err)
 
-	if !bytes.Equal(newUpdatedPlainText, []byte("updated super secret")) {
-		t.Fatal("plain text does not match original plain text")
-	}
+	assert.EqualValues(t, []byte("updated super secret"), newUpdatedPlainText)
 }
 
 func TestBackwardsCompatibility(t *testing.T) {
