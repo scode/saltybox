@@ -156,5 +156,9 @@ func Decrypt(passphrase string, crypttext []byte) ([]byte, error) {
 		return nil, errors.New("corrupt input, tampered-with data, or bad passphrase")
 	}
 
+	if plaintext == nil {
+		plaintext = []byte{}
+	}
+
 	return plaintext, nil
 }

@@ -1,7 +1,6 @@
 package main
 
 import (
-	"bytes"
 	"github.com/stretchr/testify/assert"
 	"io/ioutil"
 	"os"
@@ -39,7 +38,7 @@ func TestCachingPassphraseReader_ReadPassphrase(t *testing.T) {
 
 func TestEncryptDecryptUpdate(t *testing.T) {
 	tempdir, err := ioutil.TempDir(os.TempDir(), "saltyboxtest")
-	if ! assert.NoError(t, err) {
+	if !assert.NoError(t, err) {
 		assert.FailNow(t, "failed to create temporary directory")
 	}
 	defer checkedRemove(t, tempdir)
@@ -47,7 +46,7 @@ func TestEncryptDecryptUpdate(t *testing.T) {
 	// Encrypt
 	plainPath := filepath.Join(tempdir, "plain")
 	err = ioutil.WriteFile(plainPath, []byte("super secret"), 0777)
-	if ! assert.NoError(t, err) {
+	if !assert.NoError(t, err) {
 		assert.FailNow(t, "failed to write secret to file")
 	}
 	defer checkedRemove(t, plainPath)
@@ -95,32 +94,24 @@ func TestEncryptDecryptUpdate(t *testing.T) {
 
 func TestBackwardsCompatibility(t *testing.T) {
 	tempdir, err := ioutil.TempDir(os.TempDir(), "saltyboxtest")
-	if err != nil {
-		t.Fatalf("failed creating temp dir: %s", err)
+	if !assert.NoError(t, err) {
+		assert.FailNow(t, "failed to create temp dir")
 	}
 	defer checkedRemove(t, tempdir)
 
 	encryptedPath := filepath.Join(tempdir, "plain")
 	err = ioutil.WriteFile(encryptedPath, []byte("saltybox1:RF0qX8mpCMXVBq6zxHfamdiT64s6Pwvb99Qj9gV61sMAAAAAAAAAFE6RVTWMhBCMJGL0MmgdDUBHoJaW"), 0777)
-	if err != nil {
-		t.Fatalf("failed to write to %s: %s", encryptedPath, err)
-	}
+	assert.NoError(t, err)
 	defer checkedRemove(t, encryptedPath)
 
 	newPlainPath := filepath.Join(tempdir, "newplain")
 	defer checkedRemove(t, newPlainPath)
 
 	err = passphraseDecryptFile(encryptedPath, newPlainPath, &constantPassphraseReader{constantPassphrase: "test"})
-	if err != nil {
-		t.Fatalf("decryption failed: %s", err)
-	}
+	assert.NoError(t, err)
 
 	newPlainText, err := ioutil.ReadFile(newPlainPath)
-	if err != nil {
-		t.Fatalf("failed to read from %s: %s", newPlainPath, err)
-	}
+	assert.NoError(t, err)
 
-	if !bytes.Equal(newPlainText, []byte("test")) {
-		t.Fatal("plain text does not match original plain text")
-	}
+	assert.EqualValues(t, []byte("test"), newPlainText)
 }

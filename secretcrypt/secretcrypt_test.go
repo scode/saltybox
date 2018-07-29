@@ -1,25 +1,18 @@
 package secretcrypt
 
 import (
-	"bytes"
-	"math/rand"
+		"math/rand"
 	"testing"
+	"github.com/stretchr/testify/assert"
 )
 
-func passthrough(passphrase string, plaintext []byte) {
+func passthrough(t *testing.T, passphrase string, plaintext []byte) {
 	crypted, err := Encrypt(passphrase, plaintext)
-	if err != nil {
-		panic(err)
-	}
+	assert.NoError(t, err)
 
 	plainResult, err := Decrypt(passphrase, crypted)
-	if err != nil {
-		panic(err)
-	}
-
-	if !bytes.Equal(plainResult, plaintext) {
-		panic("expected correct plaintext")
-	}
+	assert.NoError(t, err)
+	assert.EqualValues(t, plaintext, plainResult)
 }
 
 func TestEncryptDecryptDoesNotCorrupt(t *testing.T) {
@@ -34,6 +27,6 @@ func TestEncryptDecryptDoesNotCorrupt(t *testing.T) {
 		b := make([]byte, plaintextLens[i])
 
 		r.Read(b)
-		passthrough("testphrase", b)
+		passthrough(t, "testphrase", b)
 	}
 }

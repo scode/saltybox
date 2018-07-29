@@ -2,18 +2,13 @@ package varmor
 
 import (
 	"testing"
+	"github.com/stretchr/testify/assert"
 )
 
 func preserve(t *testing.T, s string) {
 	b, err := Unwrap(Wrap([]byte(s)))
-	if err != nil {
-		t.Error("Unwrap should not have failed")
-	}
-
-	if string(b) != s {
-		t.Error("Wrapping and unwrapping produced non-equal results")
-	}
-
+	assert.NoError(t, err)
+	assert.Equal(t, s, string(b))
 }
 
 func TestPreservation(t *testing.T) {
@@ -23,23 +18,13 @@ func TestPreservation(t *testing.T) {
 
 func TestTruncated(t *testing.T) {
 	b, err := Unwrap("")
-	if b != nil {
-		t.Error("truncated input to Unwrap should result in empty bytes")
-	}
-	if err == nil {
-		t.Error("truncated input to Unwrap should result in error")
-	}
+	assert.Error(t, err)
+	assert.Nil(t, b)
 }
 
 func TestWrongVersion(t *testing.T) {
 	b, err := Unwrap("saltybox999999:...")
-	if b != nil {
-		t.Error("future versioned input to Unwrap should result in empty bytes")
-	}
-	if err == nil {
-		t.Error("future versioned input to Unwrap should result in error")
-	}
-	if err.Error() != "input claims to be saltybox, but not a version we support" {
-		t.Error("future versioned input to Unwrap should result in friendly error")
-	}
+	assert.Error(t, err)
+	assert.Equal(t, "input claims to be saltybox, but not a version we support", err.Error())
+	assert.Nil(t, b)
 }
