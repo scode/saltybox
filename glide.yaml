@@ -1,7 +1,0 @@
-package: github.com/scode/saltybox
-import:
-- package: golang.org/x/crypto
-  subpackages:
-  - nacl/secretbox
-  - scrypt
-  - ssh/terminal
