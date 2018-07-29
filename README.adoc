@@ -9,8 +9,17 @@ Make sure to finish this README completely before deciding to use it.
 
 == Building
 
+Go 1.11+ (preferred, uses vgo):
+
 ```
-go build saltybox.go
+go build
+```
+
+Go 1.10 and below:
+
+```
+go get
+go build
 ```
 
 == Usage
