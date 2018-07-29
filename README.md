@@ -1,4 +1,18 @@
-= saltybox
+<!-- START doctoc generated TOC please keep comment here to allow auto update -->
+<!-- DON'T EDIT THIS SECTION, INSTEAD RE-RUN doctoc TO UPDATE -->
+**Table of Contents**  *generated with [DocToc](https://github.com/thlorenz/doctoc)*
+
+- [Introduction](#introduction)
+- [Building](#building)
+- [Usage](#usage)
+- [Important crypto disclaimer](#important-crypto-disclaimer)
+- [Notable features](#notable-features)
+- [Guidance for use](#guidance-for-use)
+- [Format/API contract](#formatapi-contract)
+
+<!-- END doctoc generated TOC please keep comment here to allow auto update -->
+
+# Introduction
 
 Saltybox is a minimalistic tool that implements passphrase based
 encryption of files. Its primary intended use-case is for encrypting
@@ -7,7 +21,7 @@ small amounts of personal data for safe keeping on untrusted media
 
 Make sure to finish this README completely before deciding to use it.
 
-== Building
+# Building
 
 Go 1.11+ (preferred, uses vgo):
 
@@ -22,7 +36,7 @@ go get
 go build
 ```
 
-== Usage
+# Usage
 
 Here's how to encrypt a file (you will be interactively prompted for a
 passphrase):
@@ -48,7 +62,7 @@ encrypt the new contents):
 ./saltybox passphrase-update-file allmysecrets-updated.txt allmysecrets.txt.saltybox
 ```
 
-== Important crypto disclaimer
+# Important crypto disclaimer
 
 I am not a cryptographer and the code has not been revewied by any
 cryptographers. Are you one? Please send me feedback
@@ -63,7 +77,7 @@ Unfortunately, I have not been able to find a tool like this that
 satisfies my personal criteria for what I want to depend on for
 emergency life recovery media.
 
-== Notable features
+# Notable features
 
 * The user interface is incredibly basic and is *not* suitable for scripting.
 * There is no attempt to lock the passphrase into memory. The passphrase
@@ -79,7 +93,7 @@ emergency life recovery media.
   should be easy to audit.
 * Zero dependencies beyond Go itself and official golang.org libraries.
 
-== Guidance for use
+# Guidance for use
 
 I recommend that you store a copy of the program source code and a
 built binary for your platform(s) alongside the encrypted data. This
@@ -95,7 +109,7 @@ encrypted file. This avoids the possibility of accidentally changing
 the passphrase by providing a different passphrase than what was used
 to encrypt the existing file.
 
-== Format/API contract
+# Format/API contract
 
 * Future versions if any will remain able to decrypt data in older
   formats.
