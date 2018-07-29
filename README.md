@@ -1,3 +1,17 @@
+<!-- START doctoc generated TOC please keep comment here to allow auto update -->
+<!-- DON'T EDIT THIS SECTION, INSTEAD RE-RUN doctoc TO UPDATE -->
+**Table of Contents**  *generated with [DocToc](https://github.com/thlorenz/doctoc)*
+
+- [saltybox](#saltybox)
+  - [Building](#building)
+  - [Usage](#usage)
+  - [Important crypto disclaimer](#important-crypto-disclaimer)
+  - [Notable features](#notable-features)
+  - [Guidance for use](#guidance-for-use)
+  - [Format/API contract](#formatapi-contract)
+
+<!-- END doctoc generated TOC please keep comment here to allow auto update -->
+
 # saltybox
 
 Saltybox is a minimalistic tool that implements passphrase based
