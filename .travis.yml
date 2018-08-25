@@ -1,16 +1,21 @@
 language: go
 go:
-  - "1.10"
+  - "1.11"
 
 install:
-  - go get -u golang.org/x/vgo
   - go get github.com/golang/lint/golint
-  - go get github.com/kisielk/errcheck
+  # errcheck's master does not support modules. Module support existed on master previously but was reverted because
+  # it broke builds on Go versions below 1.10.4. While this is shaking out, install a version that does have module
+  # support. See https://github.com/kisielk/errcheck/issues/150
+  - (cd /tmp && git clone https://github.com/kisielk/errcheck && cd errcheck && git checkout 2f843a121b17b3902d9a6c965b5476dc618bb742 && go install && cd .. && rm -rf errcheck)
+
+env:
+  # travis by default puts us in a GOPATH which causes module support to be turned off. force it on.
+  - GO111MODULE=on
 
 script:
-  - vgo build
-  - vgo test
-  - vgo mod -vendor
-  - errcheck
-  - golint
-  - go vet
+  - go build
+  - go test ./...
+  - go vet ./...
+  - errcheck ./...
+  - golint ./...
