@@ -10,7 +10,7 @@ install:
   - (cd /tmp && git clone https://github.com/kisielk/errcheck && cd errcheck && git checkout 2f843a121b17b3902d9a6c965b5476dc618bb742 && go install && cd .. && rm -rf errcheck)
 
 env:
-  # travis by default run's in a GOPATH which causes module support to be turned off. force it on.
+  # travis by default puts us in a GOPATH which causes module support to be turned off. force it on.
   - GO111MODULE=on
 
 script:
