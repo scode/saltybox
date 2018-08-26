@@ -20,6 +20,15 @@ script:
   - errcheck ./...
   - golint ./...
 
+  # End-to-end test of decryption.
+  #
   # NOTE: passing passphrase to stdin is not a public interface; this behavior may change at any time.
-  - echo -n test | ./saltybox passphrase-decrypt-file testdata/hello.txt.salty testdata/hello-decrypted.txt
-  - diff testdata/hello-decrypted.txt hello.txt
+  - echo -n test | ./saltybox passphrase-decrypt-file testdata/hello.txt.salty /tmp/hello-decrypted.txt
+  - diff testdata/hello.txt /tmp/hello-decrypted.txt
+
+  # End-to-end test of encryption. While compatible evolution of saltybox is possible, this helps detect
+  # any *accidental* change in output.
+  #
+  # NOTE: passing passphrase to stdin is not a public interface; this behavior may change at any time.
+  - echo -n test | ./saltybox passphrase-encrypt-file testdata/hello.txt /tmp/hello-encrypted.txt.salty
+  - diff testdata/hello.txt.salty /tmp/hello-encrypted.txt.salty
