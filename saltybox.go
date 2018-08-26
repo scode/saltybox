@@ -1,6 +1,7 @@
 package main
 
 import (
+	"bufio"
 	"fmt"
 	"github.com/scode/saltybox/secretcrypt"
 	"github.com/scode/saltybox/varmor"
@@ -28,16 +29,28 @@ type cachingPassphraseReader struct {
 }
 
 func (r *stdinPassphraseReader) ReadPassphrase() string {
-	_, err := fmt.Fprint(os.Stderr, "Passphrase (saltybox): ")
-	if err != nil {
-		panic(err)
-	}
-	phrase, err := terminal.ReadPassword(0)
-	if err != nil {
-		panic(fmt.Sprintf("failure reading passphrase: %s", err))
-	}
+	if terminal.IsTerminal(0) {
+		_, err := fmt.Fprint(os.Stderr, "Passphrase (saltybox): ")
+		if err != nil {
+			panic(err)
+		}
+		phrase, err := terminal.ReadPassword(0)
+		if err != nil {
+			panic(fmt.Sprintf("failure reading passphrase: %s", err))
+		}
 
-	return string(phrase)
+		return string(phrase)
+	} else {
+		// Undocumented support for reading passphrase from stdin. It's undocumented because we should switch to
+		// real command line handling and only enable this if asked rather than just because stdin isn't a terminal.
+		// In the mean time, this enables better testing in travis.
+		data, err := ioutil.ReadAll(bufio.NewReader(os.Stdin))
+		if err != nil {
+			panic(fmt.Sprintf("failure reading passphrase from stdin: %s", err))
+		}
+
+		return string(data)
+	}
 }
 
 func (r *cachingPassphraseReader) ReadPassphrase() string {
