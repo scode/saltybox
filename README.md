@@ -23,17 +23,10 @@ Make sure to finish this README completely before deciding to use it.
 
 # Building
 
-Go 1.11+ (preferred, uses vgo):
+saltybox requires Go 1.11 or later.
 
 ```
-go build
-```
-
-Go 1.10 and below:
-
-```
-go get
-go build
+GO111MODULE=on go build
 ```
 
 # Usage
