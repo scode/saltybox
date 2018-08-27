@@ -104,8 +104,10 @@ to encrypt the existing file.
 
 # Format/API contract
 
-* Future versions if any will remain able to decrypt data in older
-  formats.
-* The command line interface may change and is not suitable for
-  automated scripting.
-* The library API may also change.
+* Future versions if any will remain able to decrypt data encrypted by
+  older versions.
+* The command line interface may change at any time. It is currently not
+  intended for automated scripting (for this reason and others).
+* The code in this project is not meant to be consumed as a library and may
+  be refactored or changed at will. It's possible this changes in the future,
+  but if so it will be explicitly made clear.
