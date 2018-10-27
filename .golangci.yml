@@ -11,7 +11,7 @@ linters:
     - unparam
     - unused
     - varcheck
-disable:
+  disable:
     - megacheck  # appears to not support modules
     - typecheck  # appears to not support modules
 
