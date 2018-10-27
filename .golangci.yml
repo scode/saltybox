@@ -1,0 +1,17 @@
+linters:
+  enable:
+    - deadcode
+    - errcheck
+    - golint
+    - gosec
+    - gosimple
+    - govet
+    - ineffassign
+    - staticcheck
+    - unparam
+    - unused
+    - varcheck
+disable:
+    - megacheck  # appears to not support modules
+    - typecheck  # appears to not support modules
+

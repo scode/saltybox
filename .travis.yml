@@ -3,22 +3,17 @@ go:
   - "1.11"
 
 install:
-  - go get github.com/golang/lint/golint
-  # errcheck's master does not support modules. Module support existed on master previously but was reverted because
-  # it broke builds on Go versions below 1.10.4. While this is shaking out, install a version that does have module
-  # support. See https://github.com/kisielk/errcheck/issues/150
-  - (cd /tmp && git clone https://github.com/kisielk/errcheck && cd errcheck && git checkout 2f843a121b17b3902d9a6c965b5476dc618bb742 && go install && cd .. && rm -rf errcheck)
+  - curl -sfL https://install.goreleaser.com/github.com/golangci/golangci-lint.sh | sh -s v1.10.2
+  - ./bin/golangci-lint --version
 
 env:
   # travis by default puts us in a GOPATH which causes module support to be turned off. force it on.
   - GO111MODULE=on
 
 script:
+  - ./bin/golangci-lint run --max-issues-per-linter 500 --max-same-issue 500
   - go build
   - go test ./...
-  - go vet ./...
-  - errcheck ./...
-  - golint ./...
 
   # End-to-end test of decryption. The immutable committed encrypted data must never fail to decrypt.
   #

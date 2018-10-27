@@ -64,7 +64,7 @@ func TestEncryptDecryptUpdate(t *testing.T) {
 	err = passphraseDecryptFile(encryptedPath, newPlainPath, &constantPassphraseReader{constantPassphrase: "test"})
 	assert.NoError(t, err)
 
-	newPlainText, err := ioutil.ReadFile(newPlainPath)
+	newPlainText, err := ioutil.ReadFile(newPlainPath) // nolint:gosec
 	assert.NoError(t, err)
 	assert.EqualValues(t, []byte("super secret"), newPlainText)
 
@@ -86,7 +86,7 @@ func TestEncryptDecryptUpdate(t *testing.T) {
 	err = passphraseDecryptFile(encryptedPath, newUpdatedPlainPath, &constantPassphraseReader{constantPassphrase: "test"})
 	assert.NoError(t, err)
 
-	newUpdatedPlainText, err := ioutil.ReadFile(newUpdatedPlainPath)
+	newUpdatedPlainText, err := ioutil.ReadFile(newUpdatedPlainPath) // nolint:gosec
 	assert.NoError(t, err)
 
 	assert.EqualValues(t, []byte("updated super secret"), newUpdatedPlainText)
@@ -110,7 +110,7 @@ func TestBackwardsCompatibility(t *testing.T) {
 	err = passphraseDecryptFile(encryptedPath, newPlainPath, &constantPassphraseReader{constantPassphrase: "test"})
 	assert.NoError(t, err)
 
-	newPlainText, err := ioutil.ReadFile(newPlainPath)
+	newPlainText, err := ioutil.ReadFile(newPlainPath) // nolint:gosec
 	assert.NoError(t, err)
 
 	assert.EqualValues(t, []byte("test"), newPlainText)
