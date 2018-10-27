@@ -74,7 +74,7 @@ func passphraseEncrypt(passphrase string, plaintext []byte) (string, error) {
 }
 
 func passphraseEncryptFile(inpath string, outpath string, preader passphraseReader) error {
-	plaintext, err := ioutil.ReadFile(inpath) // nolint:gosec
+	plaintext, err := ioutil.ReadFile(inpath)
 	if err != nil {
 		return fmt.Errorf("failed to read from %s: %s", inpath, err)
 	}
@@ -108,7 +108,7 @@ func passphraseDecrypt(passphrase string, encryptedString string) ([]byte, error
 }
 
 func passphraseDecryptFile(inpath string, outpath string, preader passphraseReader) error {
-	varmoredBytes, err := ioutil.ReadFile(inpath) // nolint:gosec
+	varmoredBytes, err := ioutil.ReadFile(inpath)
 	if err != nil {
 		return fmt.Errorf("failed to read from %s: %s", inpath, err)
 	}
@@ -131,7 +131,7 @@ func passphraseUpdateFile(plainfile string, cryptfile string, preader passphrase
 	// Decrypt existing file in order to validate that the provided passphrase is correct,
 	// in order to prevent accidental changing of the passphrase (but we discard the plain
 	// text).
-	varmoredBytes, err := ioutil.ReadFile(cryptfile) // nolint:gosec
+	varmoredBytes, err := ioutil.ReadFile(cryptfile)
 	if err != nil {
 		return fmt.Errorf("failed to read from %s: %s", cryptfile, err)
 	}
