@@ -154,7 +154,7 @@ func passphraseUpdateFile(plainfile string, cryptfile string, preader passphrase
 		return fmt.Errorf("failed to create tempfile: %s", err)
 	}
 	defer func(fname string) {
-		if _, err := os.Stat(fname); !os.IsNotExist(err) {
+		if _, localErr := os.Stat(fname); !os.IsNotExist(localErr) {
 			err = os.Remove(fname)
 		}
 	}(tmpfile.Name())
