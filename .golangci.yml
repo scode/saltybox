@@ -14,4 +14,8 @@ linters:
   disable:
     - megacheck  # appears to not support modules
     - typecheck  # appears to not support modules
-
+issues:
+  exclude:
+    # gosec:G404 causes false positive claim that we're using math.rand instead of crypto.rand even though we
+    # clearly are not.
+    - G404
