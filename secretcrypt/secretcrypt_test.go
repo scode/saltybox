@@ -1,8 +1,9 @@
 package secretcrypt
 
 import (
-		"math/rand"
+	"math/rand"
 	"testing"
+
 	"github.com/stretchr/testify/assert"
 )
 
