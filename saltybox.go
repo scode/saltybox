@@ -3,13 +3,14 @@ package main
 import (
 	"bufio"
 	"fmt"
-	"github.com/scode/saltybox/secretcrypt"
-	"github.com/scode/saltybox/varmor"
-	"golang.org/x/crypto/ssh/terminal"
 	"io/ioutil"
 	"log"
 	"os"
 	"path"
+
+	"github.com/scode/saltybox/secretcrypt"
+	"github.com/scode/saltybox/varmor"
+	"golang.org/x/crypto/ssh/terminal"
 )
 
 type passphraseReader interface {
