@@ -21,4 +21,4 @@ issues:
     - G404
     # gosec:G304 causes false positive "Potential file inclusion via variable". Would rather exclude this class
     # of issue than entirely disable gosec for such lines (I still want e.g. error checking).
-    #- G304
+    - G304
