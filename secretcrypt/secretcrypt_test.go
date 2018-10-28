@@ -26,7 +26,10 @@ func TestEncryptDecryptDoesNotCorrupt(t *testing.T) {
 	for i := 0; i < len(plaintextLens); i++ {
 		b := make([]byte, plaintextLens[i])
 
-		r.Read(b)
+		n, err := r.Read(b)
+		if n != len(b) || err != nil {
+			panic("infallible Read() failed")
+		}
 		passthrough(t, "testphrase", b)
 	}
 }

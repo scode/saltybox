@@ -1,0 +1,24 @@
+linters:
+  enable:
+    - deadcode
+    - errcheck
+    - golint
+    - gosec
+    - gosimple
+    - govet
+    - ineffassign
+    - staticcheck
+    - unparam
+    - unused
+    - varcheck
+  disable:
+    - megacheck  # appears to not support modules
+    - typecheck  # appears to not support modules
+issues:
+  exclude:
+    # gosec:G404 causes false positive claim that we're using math.rand instead of crypto.rand even though we
+    # clearly are not.
+    - G404
+    # gosec:G304 causes false positive "Potential file inclusion via variable". Would rather exclude this class
+    # of issue than entirely disable gosec for such lines (I still want e.g. error checking).
+    - G304

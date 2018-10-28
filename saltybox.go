@@ -40,17 +40,17 @@ func (r *stdinPassphraseReader) ReadPassphrase() string {
 		}
 
 		return string(phrase)
-	} else {
-		// Undocumented support for reading passphrase from stdin. It's undocumented because we should switch to
-		// real command line handling and only enable this if asked rather than just because stdin isn't a terminal.
-		// In the mean time, this enables better testing in travis.
-		data, err := ioutil.ReadAll(bufio.NewReader(os.Stdin))
-		if err != nil {
-			panic(fmt.Sprintf("failure reading passphrase from stdin: %s", err))
-		}
-
-		return string(data)
 	}
+
+	// Undocumented support for reading passphrase from stdin. It's undocumented because we should switch to
+	// real command line handling and only enable this if asked rather than just because stdin isn't a terminal.
+	// In the mean time, this enables better testing in travis.
+	data, err := ioutil.ReadAll(bufio.NewReader(os.Stdin))
+	if err != nil {
+		panic(fmt.Sprintf("failure reading passphrase from stdin: %s", err))
+	}
+
+	return string(data)
 }
 
 func (r *cachingPassphraseReader) ReadPassphrase() string {
