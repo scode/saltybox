@@ -35,6 +35,9 @@ Make sure to finish this README completely before deciding to use it.
 Assuming `$GOPATH/bin` (default: `~/go/bin`) is in your `$PATH`, saltybox is now ready
 to use.
 
+If you decide to use saltybox for anything important, please review
+[guidance for use](#guidance-for-use).
+
 # Usage
 
 **NOTE**: Apologies for the unconventional command line argument parsing. It may change in the future and should not be relied upon in scripts.
@@ -96,19 +99,28 @@ emergency life recovery media.
 
 # Guidance for use
 
-I recommend that you store a copy of the program source code and a
-built binary for your platform(s) alongside the encrypted data. This
-ensures you will be able to recover your data even if this project
-disappears from github or is otherwise inaccessible. Including the
-built binary is important to ensure you can reproduce exactly the
-program used to encrypt the data. This is not a well known and well
-replicated program, so do not assume it's available online in an
-emergency.
+## Use `passphrase-update-file` whenever possible
 
-Further, always use `passphrase-update-file` when updating an existing
+Always use `passphrase-update-file` when updating an existing
 encrypted file. This avoids the possibility of accidentally changing
 the passphrase by providing a different passphrase than what was used
-to encrypt the existing file.
+to encrypt the existing file. If you manually decrypt and re-encrypt,
+you lose this protection.
+
+## Keep a copy of saltybox
+
+It is important to consider the possibility that saltybox disappears from github,
+or stops building because a dependency has changed or becomes available. In order to ensure
+that you are able to decrypt your data if such a thing were to happen, the following steps
+are recommended:
+
+* Store a copy of the binary for your platform(s) in a safe place.
+* In a copy of the source code, run `go mod vendor` to download all necessary dependencies
+  into the `vendor` directory. Ensure saltybox builds with `go build -mod=vendor`. Then
+  store a copy of the complete source tree (including `vendor`) in a safe place.
+
+In an emergency need to decrypt data, this should maximize your chances of being able to do so without
+relying on external projects/people aside from the Go language tools themselves remaining available.
 
 # Format/API contract
 

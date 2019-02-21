@@ -21,6 +21,11 @@ script:
   # less user friendly way by the linter.
   - ./bin/golangci-lint run -v --max-issues-per-linter 500 --max-same-issues 500
 
+  # The purpose of testing vendoring here is to alert us to the need to update instructions in
+  # the README, should the process change in some way.
+  - go mod vendor
+  - go build -mod=vendor
+
   # End-to-end test of decryption. The immutable committed encrypted data must never fail to decrypt.
   #
   # NOTE: passing passphrase to stdin is not a public interface; this behavior may change at any time.
