@@ -11,8 +11,8 @@ env:
   - GO111MODULE=on
 
 script:
-  - ./bin/golangci-lint run -v --max-issues-per-linter 500 --max-same-issues 500
   - go build
+  - ./bin/golangci-lint run -v --max-issues-per-linter 500 --max-same-issues 500
   - go test ./...
 
   # End-to-end test of decryption. The immutable committed encrypted data must never fail to decrypt.
