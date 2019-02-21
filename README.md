@@ -35,6 +35,9 @@ Make sure to finish this README completely before deciding to use it.
 Assuming `$GOPATH/bin` (default: `~/go/bin`) is in your `$PATH`, saltybox is now ready
 to use.
 
+If you decide to use saltybox for anything important, please review
+[guidance for use](#guidance-for-use).
+
 # Usage
 
 **NOTE**: Apologies for the unconventional command line argument parsing. It may change in the future and should not be relied upon in scripts.
