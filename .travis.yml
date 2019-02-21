@@ -13,6 +13,12 @@ env:
 script:
   - go build
   - go test ./...
+
+  # We lint after build/test because (a) it ensures any module
+  # dependencies are downloaded first which avoids confusing
+  # golangci-lint and/or its linters, and (b) any actual problems
+  # preventing basic parsing and builds will be reported in a much
+  # less user friendly way by the linter.
   - ./bin/golangci-lint run -v --max-issues-per-linter 500 --max-same-issues 500
 
   # End-to-end test of decryption. The immutable committed encrypted data must never fail to decrypt.
