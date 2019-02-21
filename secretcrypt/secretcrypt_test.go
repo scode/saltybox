@@ -29,7 +29,7 @@ func TestEncryptDecryptDoesNotCorrupt(t *testing.T) {
 
 		n, err := r.Read(b)
 		if n != len(b) || err != nil {
-			panic("infallible Read() failed")
+			assert.FailNow(t, "infallible Read() failed")
 		}
 		passthrough(t, "testphrase", b)
 	}
