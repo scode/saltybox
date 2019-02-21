@@ -3,7 +3,8 @@
 **Table of Contents**  *generated with [DocToc](https://github.com/thlorenz/doctoc)*
 
 - [Introduction](#introduction)
-- [Building](#building)
+- [Requirements](#requirements)
+- [Quickstart](#quickstart)
 - [Usage](#usage)
 - [Important crypto disclaimer](#important-crypto-disclaimer)
 - [Notable features](#notable-features)
