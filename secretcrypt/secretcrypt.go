@@ -11,7 +11,6 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"log"
 
 	"golang.org/x/crypto/nacl/secretbox"
 	"golang.org/x/crypto/scrypt"
@@ -33,10 +32,10 @@ const (
 	secretboxNounceLen = 24
 )
 
-func genKey(passphrase string, salt []byte) [keyLen]byte {
+func genKey(passphrase string, salt []byte) (*[keyLen]byte, error) {
 	secretKey, err := scrypt.Key([]byte(passphrase), salt[:], scryptN, scryptR, scryptP, keyLen)
 	if err != nil {
-		panic(err)
+		return nil, err
 	}
 
 	// Copy merely to obtain a value of type [keyLen]byte for the caller's convenience (due to
@@ -44,7 +43,7 @@ func genKey(passphrase string, salt []byte) [keyLen]byte {
 	var secretKeyCopy [keyLen]byte
 	copy(secretKeyCopy[:], secretKey)
 
-	return secretKeyCopy
+	return &secretKeyCopy, nil
 }
 
 // Encrypt encrypts bytes using a passphrase.
@@ -57,42 +56,45 @@ func Encrypt(passphrase string, plaintext []byte) ([]byte, error) {
 	var salt [saltLen]byte
 	n, err := rand.Read(salt[:])
 	if err != nil {
-		log.Panic("rand.Read() should never fail")
+		return nil, fmt.Errorf("rand.Read() should never fail, but did: %v", err)
 	}
 	if n != len(salt) {
-		log.Panic("rand.Read() should always return expected length")
+		return nil, fmt.Errorf("rand.Read() should always return the requested length, but did not: %v", n)
 	}
 
-	secretKey := genKey(passphrase, salt[:])
+	secretKey, err := genKey(passphrase, salt[:])
+	if err != nil {
+		return nil, err
+	}
 
 	var nounce [secretboxNounceLen]byte
 	n, err = rand.Read(nounce[:])
 	if err != nil {
-		log.Panic("rand.Read() should never fail")
+		return nil, fmt.Errorf("rand.Read() should never fail, but did: %v", err)
 	}
 	if n != len(nounce) {
-		log.Panic("rand.Read() should always return expected length")
+		return nil, fmt.Errorf("rand.Read() should always return the requested length, but did not: %v", n)
 	}
 
 	sealedBox := secretbox.Seal(
 		nil,
 		plaintext,
 		&nounce,
-		&secretKey,
+		secretKey,
 	)
 
 	var buf bytes.Buffer
 	if _, err = buf.Write(salt[:]); err != nil {
-		log.Panic(err)
+		return nil, fmt.Errorf("infallible Write() failed: %v", err)
 	}
 	if _, err = buf.Write(nounce[:]); err != nil {
-		log.Panic(err)
+		return nil, fmt.Errorf("infallible Write() failed: %v", err)
 	}
 	if err = binary.Write(&buf, binary.BigEndian, int64(len(sealedBox))); err != nil {
-		log.Panic(err)
+		return nil, fmt.Errorf("infallible Write() failed: %v", err)
 	}
 	if _, err = buf.Write(sealedBox); err != nil {
-		log.Panic(err)
+		return nil, fmt.Errorf("infallible Write() failed: %v", err)
 	}
 
 	return buf.Bytes(), nil
@@ -117,7 +119,7 @@ func Decrypt(passphrase string, crypttext []byte) ([]byte, error) {
 		return nil, fmt.Errorf("input likely truncated while reading salt: %v", err)
 	}
 	if n != len(salt) {
-		log.Panic("expected correct byte count on successfull io.ReadFull()")
+		return nil, fmt.Errorf("ReadFull() succeeded yet byte count was not as expected: %v", n)
 	}
 
 	var nounce [secretboxNounceLen]byte
@@ -126,7 +128,7 @@ func Decrypt(passphrase string, crypttext []byte) ([]byte, error) {
 		return nil, fmt.Errorf("input likely truncated while reading nounce: %v", err)
 	}
 	if n != len(nounce) {
-		log.Panic("expected correct byte count on successfull io.ReadFull()")
+		return nil, fmt.Errorf("ReadFull() succeeded yet byte count was not as expected: %v", n)
 	}
 
 	var sealedBoxLen int64
@@ -143,15 +145,19 @@ func Decrypt(passphrase string, crypttext []byte) ([]byte, error) {
 		return nil, errors.New("truncated or corrupt input (while reading sealed box)")
 	}
 	if n != len(sealedBox) {
-		log.Panic("expected correct byte count on successful io.ReadFull()")
+		return nil, fmt.Errorf("ReadFull() succeeded yet byte count was not as expected: %v", n)
 	}
 
-	secretKey := genKey(passphrase, salt[:])
+	secretKey, err := genKey(passphrase, salt[:])
+	if err != nil {
+		return nil, err
+	}
+
 	plaintext, success := secretbox.Open(
 		nil,
 		sealedBox,
 		&nounce,
-		&secretKey,
+		secretKey,
 	)
 	if !success {
 		return nil, errors.New("corrupt input, tampered-with data, or bad passphrase")
