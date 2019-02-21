@@ -3,7 +3,8 @@
 **Table of Contents**  *generated with [DocToc](https://github.com/thlorenz/doctoc)*
 
 - [Introduction](#introduction)
-- [Building](#building)
+- [Requirements](#requirements)
+- [Quickstart](#quickstart)
 - [Usage](#usage)
 - [Important crypto disclaimer](#important-crypto-disclaimer)
 - [Notable features](#notable-features)
@@ -21,15 +22,22 @@ small amounts of personal data for safe keeping on untrusted media
 
 Make sure to finish this README completely before deciding to use it.
 
-# Building
+# Requirements
 
-saltybox requires Go 1.11 or later.
+* Go 1.11 or later is required to be [installed](https://golang.org/doc/install).
+
+# Quickstart
 
 ```
-GO111MODULE=on go build
+ $ go get github.com/scode/saltybox
 ```
+
+Assuming `$GOPATH/bin` (default: `~/go/bin`) is in your `$PATH`, saltybox is now ready
+to use.
 
 # Usage
+
+**NOTE**: Apologies for the unconventional command line argument parsing. It may change in the future and should not be relied upon in scripts.
 
 Here's how to encrypt a file (you will be interactively prompted for a
 passphrase):
