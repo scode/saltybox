@@ -12,8 +12,8 @@ env:
 
 script:
   - go build
-  - ./bin/golangci-lint run -v --max-issues-per-linter 500 --max-same-issues 500
   - go test ./...
+  - ./bin/golangci-lint run -v --max-issues-per-linter 500 --max-same-issues 500
 
   # End-to-end test of decryption. The immutable committed encrypted data must never fail to decrypt.
   #
