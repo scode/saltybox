@@ -19,9 +19,9 @@ type constantPassphraseReader struct {
 	callCount          int
 }
 
-func (r *constantPassphraseReader) ReadPassphrase() string {
+func (r *constantPassphraseReader) ReadPassphrase() (string, error) {
 	r.callCount++
-	return r.constantPassphrase
+	return r.constantPassphrase, nil
 }
 
 func TestCachingPassphraseReader_ReadPassphrase(t *testing.T) {
@@ -29,11 +29,15 @@ func TestCachingPassphraseReader_ReadPassphrase(t *testing.T) {
 	caching := cachingPassphraseReader{Upstream: &upstream}
 
 	// The first read should penetrate the cache.
-	assert.Equal(t, "phrase", caching.ReadPassphrase())
+	phrase, err := caching.ReadPassphrase()
+	assert.NoError(t, err)
+	assert.Equal(t, "phrase", phrase)
 	assert.Equal(t, 1, upstream.callCount)
 
 	// But the second read should not (so callCount should remain the same).
-	assert.Equal(t, "phrase", caching.ReadPassphrase())
+	phrase, err = caching.ReadPassphrase()
+	assert.NoError(t, err)
+	assert.Equal(t, "phrase", phrase)
 	assert.Equal(t, 1, upstream.callCount)
 }
 

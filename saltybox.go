@@ -14,7 +14,7 @@ import (
 )
 
 type passphraseReader interface {
-	ReadPassphrase() string
+	ReadPassphrase() (string, error)
 }
 
 type stdinPassphraseReader struct{}
@@ -29,18 +29,18 @@ type cachingPassphraseReader struct {
 	cached           bool
 }
 
-func (r *stdinPassphraseReader) ReadPassphrase() string {
+func (r *stdinPassphraseReader) ReadPassphrase() (string, error) {
 	if terminal.IsTerminal(0) {
 		_, err := fmt.Fprint(os.Stderr, "Passphrase (saltybox): ")
 		if err != nil {
-			panic(err)
+			return "", err
 		}
 		phrase, err := terminal.ReadPassword(0)
 		if err != nil {
-			panic(fmt.Sprintf("failure reading passphrase: %s", err))
+			return "", fmt.Errorf("failure reading passphrase: %s", err)
 		}
 
-		return string(phrase)
+		return string(phrase), nil
 	}
 
 	// Undocumented support for reading passphrase from stdin. It's undocumented because we should switch to
@@ -48,19 +48,23 @@ func (r *stdinPassphraseReader) ReadPassphrase() string {
 	// In the mean time, this enables better testing in travis.
 	data, err := ioutil.ReadAll(bufio.NewReader(os.Stdin))
 	if err != nil {
-		panic(fmt.Sprintf("failure reading passphrase from stdin: %s", err))
+		return "", fmt.Errorf("failure reading passphrase from stdin: %s", err)
 	}
 
-	return string(data)
+	return string(data), nil
 }
 
-func (r *cachingPassphraseReader) ReadPassphrase() string {
+func (r *cachingPassphraseReader) ReadPassphrase() (string, error) {
 	if !r.cached {
-		r.cachedPassphrase = r.Upstream.ReadPassphrase()
+		cached, err := r.Upstream.ReadPassphrase()
+		if err != nil {
+			return "", err
+		}
+		r.cachedPassphrase = cached
 		r.cached = true
 	}
 
-	return r.cachedPassphrase
+	return r.cachedPassphrase, nil
 }
 
 func passphraseEncrypt(passphrase string, plaintext []byte) (string, error) {
@@ -80,7 +84,10 @@ func passphraseEncryptFile(inpath string, outpath string, preader passphraseRead
 		return fmt.Errorf("failed to read from %s: %s", inpath, err)
 	}
 
-	passphrase := preader.ReadPassphrase()
+	passphrase, err := preader.ReadPassphrase()
+	if err != nil {
+		return err
+	}
 	encryptedString, err := passphraseEncrypt(passphrase, plaintext)
 	if err != nil {
 		return fmt.Errorf("encryption failed: %s", err)
@@ -114,7 +121,10 @@ func passphraseDecryptFile(inpath string, outpath string, preader passphraseRead
 		return fmt.Errorf("failed to read from %s: %s", inpath, err)
 	}
 
-	passphrase := preader.ReadPassphrase()
+	passphrase, err := preader.ReadPassphrase()
+	if err != nil {
+		return err
+	}
 	plaintext, err := passphraseDecrypt(passphrase, string(varmoredBytes))
 	if err != nil {
 		return fmt.Errorf("failed to decrypt: %s", err)
@@ -139,7 +149,10 @@ func passphraseUpdateFile(plainfile string, cryptfile string, preader passphrase
 
 	cachingPreader := cachingPassphraseReader{Upstream: preader}
 
-	passphrase := cachingPreader.ReadPassphrase()
+	passphrase, err := cachingPreader.ReadPassphrase()
+	if err != nil {
+		return err
+	}
 	_, err = passphraseDecrypt(passphrase, string(varmoredBytes))
 	if err != nil {
 		return fmt.Errorf("failed to decrypt: %s", err)
