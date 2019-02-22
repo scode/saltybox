@@ -6,6 +6,10 @@ env:
   # travis by default puts us in a GOPATH which causes module support to be turned off. force it on.
   - GO111MODULE=on
 
+stages:
+  - test
+  - name: coveralls
+    if: branch = master
 jobs:
   include:
     - stage: test
