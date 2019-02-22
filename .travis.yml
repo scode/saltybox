@@ -47,6 +47,7 @@ jobs:
         # and modify go.{mod,sum}.
         - mkdir /tmp/goveralls && go get github.com/mattn/goveralls
       script:
+        - go get
         # Do not fail the build if goveralls fails. We already ran tests earlier, this is just for reporting purposes
         # and we don't want the build to fail just becuase goeralls isn't accessible or similar.
         - $GOPATH/bin/goveralls -service=travis-ci || echo "goveralls failed (ignoring)"
