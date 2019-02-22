@@ -2,39 +2,52 @@ language: go
 go:
   - "1.11"
 
-install:
-  - curl -sfL https://install.goreleaser.com/github.com/golangci/golangci-lint.sh | sh -s v1.15.0
-  - ./bin/golangci-lint --version
-
 env:
   # travis by default puts us in a GOPATH which causes module support to be turned off. force it on.
   - GO111MODULE=on
 
-script:
-  - go build
-  - go test ./...
+jobs:
+  include:
+    - stage: test
+      install:
+        - curl -sfL https://install.goreleaser.com/github.com/golangci/golangci-lint.sh | sh -s v1.15.0
+        - ./bin/golangci-lint --version
 
-  # We lint after build/test because (a) it ensures any module
-  # dependencies are downloaded first which avoids confusing
-  # golangci-lint and/or its linters, and (b) any actual problems
-  # preventing basic parsing and builds will be reported in a much
-  # less user friendly way by the linter.
-  - ./bin/golangci-lint run -v --max-issues-per-linter 500 --max-same-issues 500
+      script:
+        - go build
+        - go test ./...
 
-  # The purpose of testing vendoring here is to alert us to the need to update instructions in
-  # the README, should the process change in some way.
-  - go mod vendor
-  - go build -mod=vendor
+        # We lint after build/test because (a) it ensures any module
+        # dependencies are downloaded first which avoids confusing
+        # golangci-lint and/or its linters, and (b) any actual problems
+        # preventing basic parsing and builds will be reported in a much
+        # less user friendly way by the linter.
+        - ./bin/golangci-lint run -v --max-issues-per-linter 500 --max-same-issues 500
 
-  # End-to-end test of decryption. The immutable committed encrypted data must never fail to decrypt.
-  #
-  # NOTE: passing passphrase to stdin is not a public interface; this behavior may change at any time.
-  - echo -n test | ./saltybox passphrase-decrypt-file testdata/hello.txt.salty /tmp/hello-decrypted1.txt
-  - diff testdata/hello.txt /tmp/hello-decrypted1.txt
+        # The purpose of testing vendoring here is to alert us to the need to update instructions in
+        # the README, should the process change in some way.
+        - go mod vendor
+        - go build -mod=vendor
 
-  # End-to-end test of encryption followed by decryption.
-  #
-  # NOTE: passing passphrase to stdin is not a public interface; this behavior may change at any time.
-  - echo -n test | ./saltybox passphrase-encrypt-file testdata/hello.txt /tmp/hello-encrypted2.txt.salty
-  - echo -n test | ./saltybox passphrase-decrypt-file /tmp/hello-encrypted2.txt.salty /tmp/hello-decrypted2.txt
-  - diff testdata/hello.txt /tmp/hello-decrypted2.txt
+        # End-to-end test of decryption. The immutable committed encrypted data must never fail to decrypt.
+        #
+        # NOTE: passing passphrase to stdin is not a public interface; this behavior may change at any time.
+        - echo -n test | ./saltybox passphrase-decrypt-file testdata/hello.txt.salty /tmp/hello-decrypted1.txt
+        - diff testdata/hello.txt /tmp/hello-decrypted1.txt
+
+        # End-to-end test of encryption followed by decryption.
+        #
+        # NOTE: passing passphrase to stdin is not a public interface; this behavior may change at any time.
+        - echo -n test | ./saltybox passphrase-encrypt-file testdata/hello.txt /tmp/hello-encrypted2.txt.salty
+        - echo -n test | ./saltybox passphrase-decrypt-file /tmp/hello-encrypted2.txt.salty /tmp/hello-decrypted2.txt
+        - diff testdata/hello.txt /tmp/hello-decrypted2.txt
+    - stage: coveralls
+      install:
+        # cd elsewhere to avoid `go get` thinking we want to pull it down as a dependency in our project
+        # and modify go.{mod,sum}.
+        - mkdir /tmp/goveralls && go get github.com/mattn/goveralls
+      script:
+        - go get
+        # Do not fail the build if goveralls fails. We already ran tests earlier, this is just for reporting purposes
+        # and we don't want the build to fail just because coveralls isn't accessible or similar.
+        - $GOPATH/bin/goveralls -service=travis-ci || echo "goveralls failed (ignoring)"
