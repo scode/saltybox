@@ -49,9 +49,6 @@ func genKey(passphrase string, salt []byte) (*[keyLen]byte, error) {
 // Encrypt encrypts bytes using a passphrase.
 //
 // Returns encrypted bytes and an error, if any.
-//
-// The current implementation never returns an error, but callers should not assume that this remains
-// the case.
 func Encrypt(passphrase string, plaintext []byte) ([]byte, error) {
 	var salt [saltLen]byte
 	n, err := rand.Read(salt[:])
