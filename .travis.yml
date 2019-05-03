@@ -1,7 +1,7 @@
 language: go
 go:
-  - "1.11"
-  - "1.12"
+  - "1.11.x"
+  - "1.12.x"
 
 env:
   # travis by default puts us in a GOPATH which causes module support to be turned off. force it on.
