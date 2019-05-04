@@ -2,18 +2,26 @@ linters:
   enable:
     - deadcode
     - errcheck
+    - gofmt
+    - goimports
     - golint
     - gosec
     - gosimple
     - govet
     - ineffassign
+    - ineffassign
+    - megacheck
+    - misspell
     - staticcheck
+    - staticcheck
+    - structcheck
+    - stylecheck
+    - typecheck
+    - typecheck
     - unparam
     - unused
     - varcheck
-  disable:
-    - megacheck  # appears to not support modules
-    - typecheck  # appears to not support modules
+    - varcheck
 issues:
   exclude:
     # gosec:G404 causes false positive claim that we're using math.rand instead of crypto.rand even though we
