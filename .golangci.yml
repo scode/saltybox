@@ -9,18 +9,14 @@ linters:
     - gosimple
     - govet
     - ineffassign
-    - ineffassign
     - megacheck
     - misspell
-    - staticcheck
     - staticcheck
     - structcheck
     - stylecheck
     - typecheck
-    - typecheck
     - unparam
     - unused
-    - varcheck
     - varcheck
 issues:
   exclude:
