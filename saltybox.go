@@ -3,11 +3,12 @@ package main
 import (
 	"bufio"
 	"fmt"
-	"github.com/urfave/cli"
 	"io/ioutil"
 	"log"
 	"os"
 	"path"
+
+	"github.com/urfave/cli"
 
 	"github.com/scode/saltybox/secretcrypt"
 	"github.com/scode/saltybox/varmor"
