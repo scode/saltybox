@@ -42,6 +42,12 @@ jobs:
         - echo -n test | ./saltybox encrypt -i testdata/hello.txt -o /tmp/hello-encrypted2.txt.salty
         - echo -n test | ./saltybox decrypt -i /tmp/hello-encrypted2.txt.salty -o /tmp/hello-decrypted2.txt
         - diff testdata/hello.txt /tmp/hello-decrypted2.txt
+
+        # Missing command name should result in non-successful exit.
+        - ! ./saltybox
+
+        # Help is considered success when explicitly requested.
+        - ./saltybox help
     - stage: coveralls
       install:
         # cd elsewhere to avoid `go get` thinking we want to pull it down as a dependency in our project
