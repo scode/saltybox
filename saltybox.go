@@ -2,6 +2,7 @@ package main
 
 import (
 	"bufio"
+	"errors"
 	"fmt"
 	"io/ioutil"
 	"log"
@@ -280,6 +281,10 @@ func main() {
 				return passphraseUpdateFile(inputArg, outputArg, &stdinPassphraseReader{})
 			},
 		},
+	}
+
+	app.Action = func(c *cli.Context) error {
+		return errors.New("command is required; use help to see list of commands")
 	}
 
 	err := app.Run(os.Args)
