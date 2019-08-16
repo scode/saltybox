@@ -42,35 +42,30 @@ If you decide to use saltybox for anything important, please review
 
 # Usage
 
-**NOTE**: Apologies for the unconventional command line argument parsing. It may change in the future and should not be relied upon in scripts.
-
 Here's how to encrypt a file (you will be interactively prompted for a
 passphrase):
 
 ```
-./saltybox passphrase-encrypt-file allmysecrets.txt allmysecrets.txt.saltybox
+./saltybox encrypt -i allmysecrets.txt -o allmysecrets.txt.saltybox
 ```
 
 And here is how to decrypt it afterwards (again, you will be
 interactively prompted for a passphrase):
 
 ```
-./saltybox passphrase-decrypt-file allmysecrets.txt.saltybox allmysecrets.txt
+./saltybox decrypt -i allmysecrets.txt.saltybox -o allmysecrets.txt
 ```
 
 And here is how to update a previously encrypted file in a manner that
-does not allow accidental changing of the passphrase
-(`passphrase-update-file` will first decrypt the existing file using
-the passphrase to validate that the passphrase is correct, and then
-encrypt the new contents):
+ensures the passphrase is not accidentally changed:
 
 ```
-./saltybox passphrase-update-file allmysecrets-updated.txt allmysecrets.txt.saltybox
+./saltybox update -i allmysecrets-updated.txt -o allmysecrets.txt.saltybox
 ```
 
 # Important crypto disclaimer
 
-I am not a cryptographer and the code has not been revewied by any
+I am not a cryptographer and the code has not been reviewed by any
 cryptographers. Are you one? Please send me feedback
 (peter.schuller@infidyne.com).
 
@@ -85,7 +80,9 @@ emergency life recovery media.
 
 # Notable features
 
-* The user interface is incredibly basic and is *not* suitable for scripting.
+* There is not (yet) a good mechanism of scripting because there is no mechanism
+  of obtaining a passphrase other than from the terminal. I.e., it is currently meant
+  for interactive use.
 * There is no attempt to lock the passphrase into memory. The passphrase
   may be paged to disk or included in a core dump (should the program
   crash). You are responsible for the security of the device on which you
@@ -95,15 +92,13 @@ emergency life recovery media.
   used for encryption, and a base64 variant is used for encoding. An exact
   spec would ideally exist, but currently you are left to interpret the
   source code.
-* The amount of code is very small compared to certain other options and
-  should be easy to audit.
-* Zero dependencies beyond Go itself and official golang.org libraries.
+* The amount of code is small compared to some alternatives.
 
 # Guidance for use
 
-## Use `passphrase-update-file` whenever possible
+## Use `update` whenever possible
 
-Always use `passphrase-update-file` when updating an existing
+Always use `update` when updating an existing
 encrypted file. This avoids the possibility of accidentally changing
 the passphrase by providing a different passphrase than what was used
 to encrypt the existing file. If you manually decrypt and re-encrypt,
@@ -112,7 +107,7 @@ you lose this protection.
 ## Keep a copy of saltybox
 
 It is important to consider the possibility that saltybox disappears from github,
-or stops building because a dependency has changed or becomes available. In order to ensure
+or stops building because a dependency has changed or becomes unavailable. In order to ensure
 that you are able to decrypt your data if such a thing were to happen, the following steps
 are recommended:
 
