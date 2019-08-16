@@ -3,6 +3,7 @@ package main
 import (
 	"bufio"
 	"fmt"
+	"github.com/urfave/cli"
 	"io/ioutil"
 	"log"
 	"os"
@@ -206,33 +207,82 @@ func passphraseUpdateFile(plainfile string, cryptfile string, preader passphrase
 }
 
 func main() {
-	log.SetFlags(0)
-	if len(os.Args) < 2 {
-		log.Printf("Usage: %s <command> <args...>", os.Args[0])
-		log.Print("")
-		log.Print("Commands:")
-		log.Print("   passphrase-encrypt-file <inpath> <outpath> - encrypt file using passphrase")
-		log.Print("   passphrase-decrypt-file <inpath> <outpath> - decrypt file using passphrase")
-		log.Print("   passphrase-update-file  <inpath> <cryptpath> - update an encrypted file")
-		os.Exit(1)
+	app := cli.NewApp()
+
+	var inputArg string
+	var outputArg string
+
+	app.Commands = []cli.Command{
+		{
+			Name:    "encrypt",
+			Aliases: []string{"e"},
+			Usage:   "encrypt a file",
+			Flags: []cli.Flag{
+				cli.StringFlag{
+					Name:        "input, i",
+					Usage:       "path to the file whose contents is to be encrypted",
+					Required:    true,
+					Destination: &inputArg,
+				},
+				cli.StringFlag{
+					Name:        "output, o",
+					Usage:       "path to the file to write the encrypted text to",
+					Required:    true,
+					Destination: &outputArg,
+				},
+			},
+			Action: func(c *cli.Context) error {
+				return passphraseEncryptFile(inputArg, outputArg, &stdinPassphraseReader{})
+			},
+		},
+		{
+			Name:    "decrypt",
+			Aliases: []string{"e"},
+			Usage:   "decrypt a file",
+			Flags: []cli.Flag{
+				cli.StringFlag{
+					Name:        "input, i",
+					Usage:       "path to the file whose contents is to be decrypted",
+					Required:    true,
+					Destination: &inputArg,
+				},
+				cli.StringFlag{
+					Name:        "output, o",
+					Usage:       "path to the file to write the unencrypted text to",
+					Required:    true,
+					Destination: &outputArg,
+				},
+			},
+			Action: func(c *cli.Context) error {
+				return passphraseDecryptFile(inputArg, outputArg, &stdinPassphraseReader{})
+			},
+		},
+		{
+			Name:    "update",
+			Aliases: []string{"e"},
+			Usage:   "update an encrypted file with new encrypted content",
+			Flags: []cli.Flag{
+				cli.StringFlag{
+					Name:        "input, i",
+					Usage:       "path to the file whose contents is to be encrypted",
+					Required:    true,
+					Destination: &inputArg,
+				},
+				cli.StringFlag{
+					Name:        "output, o",
+					Usage:       "path to the existing saltybox file to replace with encrypted text",
+					Required:    true,
+					Destination: &outputArg,
+				},
+			},
+			Action: func(c *cli.Context) error {
+				return passphraseUpdateFile(inputArg, outputArg, &stdinPassphraseReader{})
+			},
+		},
 	}
 
-	if os.Args[1] == "passphrase-encrypt-file" {
-		err := passphraseEncryptFile(os.Args[2], os.Args[3], &stdinPassphraseReader{})
-		if err != nil {
-			log.Fatal(err)
-		}
-	} else if os.Args[1] == "passphrase-decrypt-file" {
-		err := passphraseDecryptFile(os.Args[2], os.Args[3], &stdinPassphraseReader{})
-		if err != nil {
-			log.Fatal(err)
-		}
-	} else if os.Args[1] == "passphrase-update-file" {
-		err := passphraseUpdateFile(os.Args[2], os.Args[3], &stdinPassphraseReader{})
-		if err != nil {
-			log.Fatal(err)
-		}
-	} else {
-		log.Fatal("unrecognized command")
+	err := app.Run(os.Args)
+	if err != nil {
+		log.Fatal(err)
 	}
 }
