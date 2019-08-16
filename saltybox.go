@@ -210,6 +210,9 @@ func passphraseUpdateFile(plainfile string, cryptfile string, preader passphrase
 
 func main() {
 	app := cli.NewApp()
+	app.Name = "saltybox"
+	app.Version = "unknown (master)"
+	app.Usage = "an encryption tool"
 
 	var inputArg string
 	var outputArg string
