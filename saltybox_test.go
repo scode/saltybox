@@ -1,6 +1,7 @@
 package main
 
 import (
+	"github.com/scode/saltybox/preader"
 	"io/ioutil"
 	"os"
 	"path/filepath"
@@ -26,7 +27,7 @@ func (r *constantPassphraseReader) ReadPassphrase() (string, error) {
 
 func TestCachingPassphraseReader_ReadPassphrase(t *testing.T) {
 	upstream := constantPassphraseReader{constantPassphrase: "phrase"}
-	caching := cachingPassphraseReader{Upstream: &upstream}
+	caching := preader.CachingPassphraseReader{Upstream: &upstream}
 
 	// The first read should penetrate the cache.
 	phrase, err := caching.ReadPassphrase()

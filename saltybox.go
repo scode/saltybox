@@ -1,9 +1,9 @@
 package main
 
 import (
-	"bufio"
 	"errors"
 	"fmt"
+	"github.com/scode/saltybox/preader"
 	"io/ioutil"
 	"log"
 	"os"
@@ -13,62 +13,7 @@ import (
 
 	"github.com/scode/saltybox/secretcrypt"
 	"github.com/scode/saltybox/varmor"
-	"golang.org/x/crypto/ssh/terminal"
 )
-
-type passphraseReader interface {
-	ReadPassphrase() (string, error)
-}
-
-type stdinPassphraseReader struct{}
-
-// cachingPassphraseReader will wrap a passphraseReader by adding caching.
-//
-// This is useful to allow "at most once" semantics when reading the passphrase, while
-// still lazily deferring the first invocation.
-type cachingPassphraseReader struct {
-	Upstream         passphraseReader
-	cachedPassphrase string
-	cached           bool
-}
-
-func (r *stdinPassphraseReader) ReadPassphrase() (string, error) {
-	if terminal.IsTerminal(0) {
-		_, err := fmt.Fprint(os.Stderr, "Passphrase (saltybox): ")
-		if err != nil {
-			return "", err
-		}
-		phrase, err := terminal.ReadPassword(0)
-		if err != nil {
-			return "", fmt.Errorf("failure reading passphrase: %s", err)
-		}
-
-		return string(phrase), nil
-	}
-
-	// Undocumented support for reading passphrase from stdin. It's undocumented because we should switch to
-	// real command line handling and only enable this if asked rather than just because stdin isn't a terminal.
-	// In the mean time, this enables better testing in travis.
-	data, err := ioutil.ReadAll(bufio.NewReader(os.Stdin))
-	if err != nil {
-		return "", fmt.Errorf("failure reading passphrase from stdin: %s", err)
-	}
-
-	return string(data), nil
-}
-
-func (r *cachingPassphraseReader) ReadPassphrase() (string, error) {
-	if !r.cached {
-		cached, err := r.Upstream.ReadPassphrase()
-		if err != nil {
-			return "", err
-		}
-		r.cachedPassphrase = cached
-		r.cached = true
-	}
-
-	return r.cachedPassphrase, nil
-}
 
 func passphraseEncrypt(passphrase string, plaintext []byte) (string, error) {
 	cipherBytes, err := secretcrypt.Encrypt(passphrase, plaintext)
@@ -81,7 +26,7 @@ func passphraseEncrypt(passphrase string, plaintext []byte) (string, error) {
 	return string(varmoredBytes), nil
 }
 
-func passphraseEncryptFile(inpath string, outpath string, preader passphraseReader) error {
+func passphraseEncryptFile(inpath string, outpath string, preader preader.PassphraseReader) error {
 	plaintext, err := ioutil.ReadFile(inpath)
 	if err != nil {
 		return fmt.Errorf("failed to read from %s: %s", inpath, err)
@@ -118,7 +63,7 @@ func passphraseDecrypt(passphrase string, encryptedString string) ([]byte, error
 	return plaintext, nil
 }
 
-func passphraseDecryptFile(inpath string, outpath string, preader passphraseReader) error {
+func passphraseDecryptFile(inpath string, outpath string, preader preader.PassphraseReader) error {
 	varmoredBytes, err := ioutil.ReadFile(inpath)
 	if err != nil {
 		return fmt.Errorf("failed to read from %s: %s", inpath, err)
@@ -141,7 +86,7 @@ func passphraseDecryptFile(inpath string, outpath string, preader passphraseRead
 	return nil
 }
 
-func passphraseUpdateFile(plainfile string, cryptfile string, preader passphraseReader) (err error) {
+func passphraseUpdateFile(plainfile string, cryptfile string, pr preader.PassphraseReader) (err error) {
 	// Decrypt existing file in order to validate that the provided passphrase is correct,
 	// in order to prevent accidental changing of the passphrase (but we discard the plain
 	// text).
@@ -150,7 +95,7 @@ func passphraseUpdateFile(plainfile string, cryptfile string, preader passphrase
 		return fmt.Errorf("failed to read from %s: %s", cryptfile, err)
 	}
 
-	cachingPreader := cachingPassphraseReader{Upstream: preader}
+	cachingPreader := preader.CachingPassphraseReader{Upstream: pr}
 
 	passphrase, err := cachingPreader.ReadPassphrase()
 	if err != nil {
@@ -237,7 +182,7 @@ func main() {
 				},
 			},
 			Action: func(c *cli.Context) error {
-				return passphraseEncryptFile(inputArg, outputArg, &stdinPassphraseReader{})
+				return passphraseEncryptFile(inputArg, outputArg, &preader.StdinPassphraseReader{})
 			},
 		},
 		{
@@ -259,7 +204,7 @@ func main() {
 				},
 			},
 			Action: func(c *cli.Context) error {
-				return passphraseDecryptFile(inputArg, outputArg, &stdinPassphraseReader{})
+				return passphraseDecryptFile(inputArg, outputArg, &preader.StdinPassphraseReader{})
 			},
 		},
 		{
@@ -281,7 +226,7 @@ func main() {
 				},
 			},
 			Action: func(c *cli.Context) error {
-				return passphraseUpdateFile(inputArg, outputArg, &stdinPassphraseReader{})
+				return passphraseUpdateFile(inputArg, outputArg, &preader.StdinPassphraseReader{})
 			},
 		},
 	}
