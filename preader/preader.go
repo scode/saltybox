@@ -3,9 +3,10 @@ package preader
 import (
 	"bufio"
 	"fmt"
-	"golang.org/x/crypto/ssh/terminal"
 	"io/ioutil"
 	"os"
+
+	"golang.org/x/crypto/ssh/terminal"
 )
 
 type PassphraseReader interface {
@@ -61,4 +62,3 @@ func (r *CachingPassphraseReader) ReadPassphrase() (string, error) {
 
 	return r.cachedPassphrase, nil
 }
-

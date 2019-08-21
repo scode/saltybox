@@ -3,11 +3,12 @@ package main
 import (
 	"errors"
 	"fmt"
-	"github.com/scode/saltybox/preader"
 	"io/ioutil"
 	"log"
 	"os"
 	"path"
+
+	"github.com/scode/saltybox/preader"
 
 	"github.com/urfave/cli"
 

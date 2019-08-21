@@ -1,11 +1,12 @@
 package main
 
 import (
-	"github.com/scode/saltybox/preader"
 	"io/ioutil"
 	"os"
 	"path/filepath"
 	"testing"
+
+	"github.com/scode/saltybox/preader"
 
 	"github.com/stretchr/testify/assert"
 )
