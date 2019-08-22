@@ -175,8 +175,7 @@ func main() {
 	app.Flags = []cli.Flag{
 		cli.BoolFlag{
 			Name:        "passphrase-stdin",
-			Usage:       "Enable reading passphrase from stdin",
-			Required:    true,
+			Usage:       "read passphrase from stdin instead of from terminal",
 			Destination: &passphraseStdinArg,
 		},
 	}
