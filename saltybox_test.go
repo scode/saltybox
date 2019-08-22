@@ -16,19 +16,19 @@ func checkedRemove(t *testing.T, fname string) {
 	assert.NoError(t, err, "removal of file %s filed: %v", fname, err)
 }
 
-type constantPassphraseReader struct {
+type mockPassphraseReader struct {
 	constantPassphrase string
 	callCount          int
 }
 
-func (r *constantPassphraseReader) ReadPassphrase() (string, error) {
+func (r *mockPassphraseReader) ReadPassphrase() (string, error) {
 	r.callCount++
 	return r.constantPassphrase, nil
 }
 
 func TestCachingPassphraseReader_ReadPassphrase(t *testing.T) {
-	upstream := constantPassphraseReader{constantPassphrase: "phrase"}
-	caching := preader.CachingPassphraseReader{Upstream: &upstream}
+	upstream := mockPassphraseReader{constantPassphrase: "phrase"}
+	caching := preader.NewCaching(&upstream)
 
 	// The first read should penetrate the cache.
 	phrase, err := caching.ReadPassphrase()
@@ -61,14 +61,14 @@ func TestEncryptDecryptUpdate(t *testing.T) {
 	encryptedPath := filepath.Join(tempdir, "encrypted")
 	defer checkedRemove(t, encryptedPath)
 
-	err = passphraseEncryptFile(plainPath, encryptedPath, &constantPassphraseReader{constantPassphrase: "test"})
+	err = passphraseEncryptFile(plainPath, encryptedPath, &mockPassphraseReader{constantPassphrase: "test"})
 	assert.NoError(t, err)
 
 	newPlainPath := filepath.Join(tempdir, "newplain")
 	defer checkedRemove(t, newPlainPath)
 
 	// Decrypt
-	err = passphraseDecryptFile(encryptedPath, newPlainPath, &constantPassphraseReader{constantPassphrase: "test"})
+	err = passphraseDecryptFile(encryptedPath, newPlainPath, &mockPassphraseReader{constantPassphrase: "test"})
 	assert.NoError(t, err)
 
 	newPlainText, err := ioutil.ReadFile(newPlainPath)
@@ -81,16 +81,16 @@ func TestEncryptDecryptUpdate(t *testing.T) {
 	assert.NoError(t, err)
 	defer checkedRemove(t, updatedPlainPath)
 
-	err = passphraseUpdateFile(updatedPlainPath, encryptedPath, &constantPassphraseReader{constantPassphrase: "wrong"})
+	err = passphraseUpdateFile(updatedPlainPath, encryptedPath, &mockPassphraseReader{constantPassphrase: "wrong"})
 	assert.Error(t, err)
 
 	// Update with right passphrase
-	err = passphraseUpdateFile(updatedPlainPath, encryptedPath, &constantPassphraseReader{constantPassphrase: "test"})
+	err = passphraseUpdateFile(updatedPlainPath, encryptedPath, &mockPassphraseReader{constantPassphrase: "test"})
 	assert.NoError(t, err)
 
 	newUpdatedPlainPath := filepath.Join(tempdir, "newupdatedplain")
 	defer checkedRemove(t, newUpdatedPlainPath)
-	err = passphraseDecryptFile(encryptedPath, newUpdatedPlainPath, &constantPassphraseReader{constantPassphrase: "test"})
+	err = passphraseDecryptFile(encryptedPath, newUpdatedPlainPath, &mockPassphraseReader{constantPassphrase: "test"})
 	assert.NoError(t, err)
 
 	newUpdatedPlainText, err := ioutil.ReadFile(newUpdatedPlainPath)
@@ -114,7 +114,7 @@ func TestBackwardsCompatibility(t *testing.T) {
 	newPlainPath := filepath.Join(tempdir, "newplain")
 	defer checkedRemove(t, newPlainPath)
 
-	err = passphraseDecryptFile(encryptedPath, newPlainPath, &constantPassphraseReader{constantPassphrase: "test"})
+	err = passphraseDecryptFile(encryptedPath, newPlainPath, &mockPassphraseReader{constantPassphrase: "test"})
 	assert.NoError(t, err)
 
 	newPlainText, err := ioutil.ReadFile(newPlainPath)
