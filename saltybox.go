@@ -183,7 +183,7 @@ func main() {
 				},
 			},
 			Action: func(c *cli.Context) error {
-				return passphraseEncryptFile(inputArg, outputArg, preader.NewStdin())
+				return passphraseEncryptFile(inputArg, outputArg, preader.NewTerminal())
 			},
 		},
 		{
@@ -205,7 +205,7 @@ func main() {
 				},
 			},
 			Action: func(c *cli.Context) error {
-				return passphraseDecryptFile(inputArg, outputArg, preader.NewStdin())
+				return passphraseDecryptFile(inputArg, outputArg, preader.NewTerminal())
 			},
 		},
 		{
@@ -227,7 +227,7 @@ func main() {
 				},
 			},
 			Action: func(c *cli.Context) error {
-				return passphraseUpdateFile(inputArg, outputArg, preader.NewStdin())
+				return passphraseUpdateFile(inputArg, outputArg, preader.NewTerminal())
 			},
 		},
 	}
