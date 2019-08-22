@@ -33,14 +33,14 @@ jobs:
         # End-to-end test of decryption. The immutable committed encrypted data must never fail to decrypt.
         #
         # NOTE: passing passphrase to stdin is not a public interface; this behavior may change at any time.
-        - echo -n test | ./saltybox decrypt -i testdata/hello.txt.salty -o /tmp/hello-decrypted1.txt
+        - echo -n test | ./saltybox --passphrase-stdin decrypt -i testdata/hello.txt.salty -o /tmp/hello-decrypted1.txt
         - diff testdata/hello.txt /tmp/hello-decrypted1.txt
 
         # End-to-end test of encryption followed by decryption.
         #
         # NOTE: passing passphrase to stdin is not a public interface; this behavior may change at any time.
-        - echo -n test | ./saltybox encrypt -i testdata/hello.txt -o /tmp/hello-encrypted2.txt.salty
-        - echo -n test | ./saltybox decrypt -i /tmp/hello-encrypted2.txt.salty -o /tmp/hello-decrypted2.txt
+        - echo -n test | ./saltybox --passphrase-stdin encrypt -i testdata/hello.txt -o /tmp/hello-encrypted2.txt.salty
+        - echo -n test | ./saltybox --passphrase-stdin decrypt -i /tmp/hello-encrypted2.txt.salty -o /tmp/hello-decrypted2.txt
         - diff testdata/hello.txt /tmp/hello-decrypted2.txt
     - stage: coveralls
       install:

@@ -1,7 +1,7 @@
 package preader
 
 import (
-	"bufio"
+	"errors"
 	"fmt"
 	"io"
 	"io/ioutil"
@@ -29,28 +29,20 @@ func NewReader(reader io.Reader) PassphraseReader {
 type terminalPassphraseReader struct{}
 
 func (r *terminalPassphraseReader) ReadPassphrase() (string, error) {
-	if terminal.IsTerminal(0) {
-		_, err := fmt.Fprint(os.Stderr, "Passphrase (saltybox): ")
-		if err != nil {
-			return "", err
-		}
-		phrase, err := terminal.ReadPassword(0)
-		if err != nil {
-			return "", fmt.Errorf("failure reading passphrase: %s", err)
-		}
-
-		return string(phrase), nil
+	if !terminal.IsTerminal(0) {
+		return "", errors.New("cannot read passphrase from terminal - stdin is not a terminal")
 	}
 
-	// Undocumented support for reading passphrase from stdin. It's undocumented because we should switch to
-	// real command line handling and only enable this if asked rather than just because stdin isn't a terminal.
-	// In the mean time, this enables better testing in travis.
-	data, err := ioutil.ReadAll(bufio.NewReader(os.Stdin))
+	_, err := fmt.Fprint(os.Stderr, "Passphrase (saltybox): ")
 	if err != nil {
-		return "", fmt.Errorf("failure reading passphrase from stdin: %s", err)
+		return "", err
+	}
+	phrase, err := terminal.ReadPassword(0)
+	if err != nil {
+		return "", fmt.Errorf("failure reading passphrase: %s", err)
 	}
 
-	return string(data), nil
+	return string(phrase), nil
 }
 
 // cachingPassphraseReader will wrap a PassphraseReader by adding caching.
