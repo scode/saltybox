@@ -161,7 +161,7 @@ func main() {
 	app.Usage = "an encryption tool"
 
 	var passphraseStdinArg bool
-	getPassphraseReader := func () preader.PassphraseReader {
+	getPassphraseReader := func() preader.PassphraseReader {
 		if passphraseStdinArg {
 			return preader.NewReader(os.Stdin)
 		}
