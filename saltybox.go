@@ -160,8 +160,26 @@ func main() {
 	app.Version = "unknown (master)"
 	app.Usage = "an encryption tool"
 
+	var passphraseStdinArg bool
+	getPassphraseReader := func () preader.PassphraseReader {
+		if passphraseStdinArg {
+			return preader.NewReader(os.Stdin)
+		}
+
+		return preader.NewTerminal()
+	}
+
 	var inputArg string
 	var outputArg string
+
+	app.Flags = []cli.Flag{
+		cli.BoolFlag{
+			Name:        "passphrase-stdin",
+			Usage:       "Enable reading passphrase from stdin",
+			Required:    true,
+			Destination: &passphraseStdinArg,
+		},
+	}
 
 	app.Commands = []cli.Command{
 		{
@@ -183,7 +201,7 @@ func main() {
 				},
 			},
 			Action: func(c *cli.Context) error {
-				return passphraseEncryptFile(inputArg, outputArg, preader.NewTerminal())
+				return passphraseEncryptFile(inputArg, outputArg, getPassphraseReader())
 			},
 		},
 		{
@@ -205,7 +223,7 @@ func main() {
 				},
 			},
 			Action: func(c *cli.Context) error {
-				return passphraseDecryptFile(inputArg, outputArg, preader.NewTerminal())
+				return passphraseDecryptFile(inputArg, outputArg, getPassphraseReader())
 			},
 		},
 		{
@@ -227,7 +245,7 @@ func main() {
 				},
 			},
 			Action: func(c *cli.Context) error {
-				return passphraseUpdateFile(inputArg, outputArg, preader.NewTerminal())
+				return passphraseUpdateFile(inputArg, outputArg, getPassphraseReader())
 			},
 		},
 	}
