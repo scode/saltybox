@@ -96,7 +96,7 @@ func passphraseUpdateFile(plainfile string, cryptfile string, pr preader.Passphr
 		return fmt.Errorf("failed to read from %s: %s", cryptfile, err)
 	}
 
-	cachingPreader := preader.CachingPassphraseReader{Upstream: pr}
+	cachingPreader := preader.NewCaching(pr)
 
 	passphrase, err := cachingPreader.ReadPassphrase()
 	if err != nil {
@@ -125,7 +125,7 @@ func passphraseUpdateFile(plainfile string, cryptfile string, pr preader.Passphr
 		err = tmpfile.Close()
 	}(tmpfile)
 
-	err = passphraseEncryptFile(plainfile, tmpfile.Name(), &cachingPreader)
+	err = passphraseEncryptFile(plainfile, tmpfile.Name(), cachingPreader)
 	if err != nil {
 		return fmt.Errorf("failed to encrypt: %s", err)
 	}
@@ -183,7 +183,7 @@ func main() {
 				},
 			},
 			Action: func(c *cli.Context) error {
-				return passphraseEncryptFile(inputArg, outputArg, &preader.StdinPassphraseReader{})
+				return passphraseEncryptFile(inputArg, outputArg, preader.NewStdin())
 			},
 		},
 		{
@@ -205,7 +205,7 @@ func main() {
 				},
 			},
 			Action: func(c *cli.Context) error {
-				return passphraseDecryptFile(inputArg, outputArg, &preader.StdinPassphraseReader{})
+				return passphraseDecryptFile(inputArg, outputArg, preader.NewStdin())
 			},
 		},
 		{
@@ -227,7 +227,7 @@ func main() {
 				},
 			},
 			Action: func(c *cli.Context) error {
-				return passphraseUpdateFile(inputArg, outputArg, &preader.StdinPassphraseReader{})
+				return passphraseUpdateFile(inputArg, outputArg, preader.NewStdin())
 			},
 		},
 	}
