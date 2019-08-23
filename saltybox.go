@@ -166,7 +166,7 @@ func main() {
 			return preader.NewReader(os.Stdin)
 		}
 
-		return preader.NewTerminal()
+		return preader.NewCaching(preader.NewTerminal())
 	}
 
 	var inputArg string
