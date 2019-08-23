@@ -159,6 +159,7 @@ func main() {
 	app.Name = "saltybox"
 	app.Version = "unknown (master)"
 	app.Usage = "an encryption tool"
+	app.HideVersion = true
 
 	var passphraseStdinArg bool
 	getPassphraseReader := func() preader.PassphraseReader {
