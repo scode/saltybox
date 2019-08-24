@@ -176,7 +176,7 @@ func main() {
 	app.Flags = []cli.Flag{
 		cli.BoolFlag{
 			Name:        "passphrase-stdin",
-			Usage:       "read passphrase from stdin instead of from terminal",
+			Usage:       "Read passphrase from stdin instead of from terminal",
 			Destination: &passphraseStdinArg,
 		},
 	}
@@ -185,17 +185,21 @@ func main() {
 		{
 			Name:    "encrypt",
 			Aliases: []string{"e"},
-			Usage:   "encrypt a file",
+			Usage:   "Encrypt a file",
+			Description: `Encrypts the contents of a file (the "input", specified with -i) and writes the encrypted output
+   to another file (the "output", specified with -o).
+
+   If the output file does not exist, it will be created. If it does exist, it will be truncated and then written to.`,
 			Flags: []cli.Flag{
 				cli.StringFlag{
 					Name:        "input, i",
-					Usage:       "path to the file whose contents is to be encrypted",
+					Usage:       "Path to the file whose contents is to be encrypted",
 					Required:    true,
 					Destination: &inputArg,
 				},
 				cli.StringFlag{
 					Name:        "output, o",
-					Usage:       "path to the file to write the encrypted text to",
+					Usage:       "Path to the file to write the encrypted text to",
 					Required:    true,
 					Destination: &outputArg,
 				},
@@ -207,17 +211,21 @@ func main() {
 		{
 			Name:    "decrypt",
 			Aliases: []string{"e"},
-			Usage:   "decrypt a file",
+			Usage:   "Decrypt a file",
+			Description: `Decrypts the contents of a file (the "input", specified with -i) and writes the plain text output
+   to another file (the "output", specified with -o).
+
+   If the output file does not exist, it will be created. If it does exist, it will be truncated and then written to.`,
 			Flags: []cli.Flag{
 				cli.StringFlag{
 					Name:        "input, i",
-					Usage:       "path to the file whose contents is to be decrypted",
+					Usage:       "Path to the file whose contents is to be decrypted",
 					Required:    true,
 					Destination: &inputArg,
 				},
 				cli.StringFlag{
 					Name:        "output, o",
-					Usage:       "path to the file to write the unencrypted text to",
+					Usage:       "Path to the file to write the unencrypted text to",
 					Required:    true,
 					Destination: &outputArg,
 				},
@@ -229,17 +237,25 @@ func main() {
 		{
 			Name:    "update",
 			Aliases: []string{"e"},
-			Usage:   "update an encrypted file with new encrypted content",
+			Usage:   "Update an encrypted file with new content",
+			Description: `Update an existing encrypted file (the "output", specified with -o) to contain the encrypted copy
+   of the input (specified with -i).
+
+   If the output file does not already exist, or if it does not appear to be a valid saltybox file, the operation will fail.
+
+   If the passphrase provided by the user does unlock the existing file, the operation will fail. By using the update command,
+   the user thereby avoids accidentally changing the passphrase as would be possible if using the encrypt command and separately
+   replacing the target file.`,
 			Flags: []cli.Flag{
 				cli.StringFlag{
 					Name:        "input, i",
-					Usage:       "path to the file whose contents is to be encrypted",
+					Usage:       "Path to the file whose contents is to be encrypted",
 					Required:    true,
 					Destination: &inputArg,
 				},
 				cli.StringFlag{
 					Name:        "output, o",
-					Usage:       "path to the existing saltybox file to replace with encrypted text",
+					Usage:       "Path to the existing saltybox file to replace with encrypted text",
 					Required:    true,
 					Destination: &outputArg,
 				},
