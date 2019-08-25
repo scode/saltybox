@@ -2,10 +2,11 @@ package main
 
 import (
 	"errors"
-	"github.com/scode/saltybox/commands"
-	"github.com/scode/saltybox/preader"
 	"log"
 	"os"
+
+	"github.com/scode/saltybox/commands"
+	"github.com/scode/saltybox/preader"
 
 	"github.com/urfave/cli"
 )

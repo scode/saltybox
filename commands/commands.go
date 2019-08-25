@@ -2,12 +2,13 @@ package commands
 
 import (
 	"fmt"
-	"github.com/scode/saltybox/preader"
-	"github.com/scode/saltybox/secretcrypt"
-	"github.com/scode/saltybox/varmor"
 	"io/ioutil"
 	"os"
 	"path"
+
+	"github.com/scode/saltybox/preader"
+	"github.com/scode/saltybox/secretcrypt"
+	"github.com/scode/saltybox/varmor"
 )
 
 func passphraseEncrypt(passphrase string, plaintext []byte) (string, error) {

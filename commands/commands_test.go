@@ -1,12 +1,13 @@
 package commands
 
 import (
-	"github.com/scode/saltybox/preader"
-	"github.com/stretchr/testify/assert"
 	"io/ioutil"
 	"os"
 	"path/filepath"
 	"testing"
+
+	"github.com/scode/saltybox/preader"
+	"github.com/stretchr/testify/assert"
 )
 
 func checkedRemove(t *testing.T, fname string) {

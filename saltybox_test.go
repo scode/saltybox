@@ -34,4 +34,3 @@ func TestCachingPassphraseReader_ReadPassphrase(t *testing.T) {
 	assert.Equal(t, "phrase", phrase)
 	assert.Equal(t, 1, upstream.callCount)
 }
-
