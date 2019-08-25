@@ -33,14 +33,14 @@ func TestEncryptDecryptUpdate(t *testing.T) {
 	encryptedPath := filepath.Join(tempdir, "encrypted")
 	defer checkedRemove(t, encryptedPath)
 
-	err = PassphraseEncryptFile(plainPath, encryptedPath, preader.NewConstant("test"))
+	err = Encrypt(plainPath, encryptedPath, preader.NewConstant("test"))
 	assert.NoError(t, err)
 
 	newPlainPath := filepath.Join(tempdir, "newplain")
 	defer checkedRemove(t, newPlainPath)
 
 	// Decrypt
-	err = PassphraseDecryptFile(encryptedPath, newPlainPath, preader.NewConstant("test"))
+	err = Decrypt(encryptedPath, newPlainPath, preader.NewConstant("test"))
 	assert.NoError(t, err)
 
 	newPlainText, err := ioutil.ReadFile(newPlainPath)
@@ -53,16 +53,16 @@ func TestEncryptDecryptUpdate(t *testing.T) {
 	assert.NoError(t, err)
 	defer checkedRemove(t, updatedPlainPath)
 
-	err = PassphraseUpdateFile(updatedPlainPath, encryptedPath, preader.NewConstant("wrong"))
+	err = Update(updatedPlainPath, encryptedPath, preader.NewConstant("wrong"))
 	assert.Error(t, err)
 
 	// Update with right passphrase
-	err = PassphraseUpdateFile(updatedPlainPath, encryptedPath, preader.NewConstant("test"))
+	err = Update(updatedPlainPath, encryptedPath, preader.NewConstant("test"))
 	assert.NoError(t, err)
 
 	newUpdatedPlainPath := filepath.Join(tempdir, "newupdatedplain")
 	defer checkedRemove(t, newUpdatedPlainPath)
-	err = PassphraseDecryptFile(encryptedPath, newUpdatedPlainPath, preader.NewConstant("test"))
+	err = Decrypt(encryptedPath, newUpdatedPlainPath, preader.NewConstant("test"))
 	assert.NoError(t, err)
 
 	newUpdatedPlainText, err := ioutil.ReadFile(newUpdatedPlainPath)
@@ -86,7 +86,7 @@ func TestBackwardsCompatibility(t *testing.T) {
 	newPlainPath := filepath.Join(tempdir, "newplain")
 	defer checkedRemove(t, newPlainPath)
 
-	err = PassphraseDecryptFile(encryptedPath, newPlainPath, preader.NewConstant("test"))
+	err = Decrypt(encryptedPath, newPlainPath, preader.NewConstant("test"))
 	assert.NoError(t, err)
 
 	newPlainText, err := ioutil.ReadFile(newPlainPath)

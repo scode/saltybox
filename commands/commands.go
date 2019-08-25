@@ -11,7 +11,7 @@ import (
 	"github.com/scode/saltybox/varmor"
 )
 
-func passphraseEncrypt(passphrase string, plaintext []byte) (string, error) {
+func encryptBytes(passphrase string, plaintext []byte) (string, error) {
 	cipherBytes, err := secretcrypt.Encrypt(passphrase, plaintext)
 	if err != nil {
 		return "", fmt.Errorf("encryption failed: %s", err)
@@ -22,7 +22,7 @@ func passphraseEncrypt(passphrase string, plaintext []byte) (string, error) {
 	return string(varmoredBytes), nil
 }
 
-func PassphraseEncryptFile(inpath string, outpath string, preader preader.PassphraseReader) error {
+func Encrypt(inpath string, outpath string, preader preader.PassphraseReader) error {
 	plaintext, err := ioutil.ReadFile(inpath)
 	if err != nil {
 		return fmt.Errorf("failed to read from %s: %s", inpath, err)
@@ -32,7 +32,7 @@ func PassphraseEncryptFile(inpath string, outpath string, preader preader.Passph
 	if err != nil {
 		return err
 	}
-	encryptedString, err := passphraseEncrypt(passphrase, plaintext)
+	encryptedString, err := encryptBytes(passphrase, plaintext)
 	if err != nil {
 		return fmt.Errorf("encryption failed: %s", err)
 	}
@@ -45,7 +45,7 @@ func PassphraseEncryptFile(inpath string, outpath string, preader preader.Passph
 	return nil
 }
 
-func passphraseDecrypt(passphrase string, encryptedString string) ([]byte, error) {
+func decryptString(passphrase string, encryptedString string) ([]byte, error) {
 	cipherBytes, err := varmor.Unwrap(encryptedString)
 	if err != nil {
 		return nil, fmt.Errorf("failed to unarmor: %s", err)
@@ -59,7 +59,7 @@ func passphraseDecrypt(passphrase string, encryptedString string) ([]byte, error
 	return plaintext, nil
 }
 
-func PassphraseDecryptFile(inpath string, outpath string, preader preader.PassphraseReader) error {
+func Decrypt(inpath string, outpath string, preader preader.PassphraseReader) error {
 	varmoredBytes, err := ioutil.ReadFile(inpath)
 	if err != nil {
 		return fmt.Errorf("failed to read from %s: %s", inpath, err)
@@ -69,7 +69,7 @@ func PassphraseDecryptFile(inpath string, outpath string, preader preader.Passph
 	if err != nil {
 		return err
 	}
-	plaintext, err := passphraseDecrypt(passphrase, string(varmoredBytes))
+	plaintext, err := decryptString(passphrase, string(varmoredBytes))
 	if err != nil {
 		return fmt.Errorf("failed to decrypt: %s", err)
 	}
@@ -82,7 +82,7 @@ func PassphraseDecryptFile(inpath string, outpath string, preader preader.Passph
 	return nil
 }
 
-func PassphraseUpdateFile(plainfile string, cryptfile string, pr preader.PassphraseReader) (err error) {
+func Update(plainfile string, cryptfile string, pr preader.PassphraseReader) (err error) {
 	// Decrypt existing file in order to validate that the provided passphrase is correct,
 	// in order to prevent accidental changing of the passphrase (but we discard the plain
 	// text).
@@ -97,7 +97,7 @@ func PassphraseUpdateFile(plainfile string, cryptfile string, pr preader.Passphr
 	if err != nil {
 		return err
 	}
-	_, err = passphraseDecrypt(passphrase, string(varmoredBytes))
+	_, err = decryptString(passphrase, string(varmoredBytes))
 	if err != nil {
 		return fmt.Errorf("failed to decrypt: %s", err)
 	}
@@ -120,7 +120,7 @@ func PassphraseUpdateFile(plainfile string, cryptfile string, pr preader.Passphr
 		err = tmpfile.Close()
 	}(tmpfile)
 
-	err = PassphraseEncryptFile(plainfile, tmpfile.Name(), cachingPreader)
+	err = Encrypt(plainfile, tmpfile.Name(), cachingPreader)
 	if err != nil {
 		return fmt.Errorf("failed to encrypt: %s", err)
 	}
