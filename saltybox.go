@@ -62,7 +62,7 @@ func main() {
 				},
 			},
 			Action: func(c *cli.Context) error {
-				return commands.PassphraseEncryptFile(inputArg, outputArg, getPassphraseReader())
+				return commands.Encrypt(inputArg, outputArg, getPassphraseReader())
 			},
 		},
 		{
@@ -88,7 +88,7 @@ func main() {
 				},
 			},
 			Action: func(c *cli.Context) error {
-				return commands.PassphraseDecryptFile(inputArg, outputArg, getPassphraseReader())
+				return commands.Decrypt(inputArg, outputArg, getPassphraseReader())
 			},
 		},
 		{
@@ -118,7 +118,7 @@ func main() {
 				},
 			},
 			Action: func(c *cli.Context) error {
-				return commands.PassphraseUpdateFile(inputArg, outputArg, getPassphraseReader())
+				return commands.Update(inputArg, outputArg, getPassphraseReader())
 			},
 		},
 	}
