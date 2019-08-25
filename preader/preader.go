@@ -26,6 +26,18 @@ func NewReader(reader io.Reader) PassphraseReader {
 	return &readerPassphraseReader{reader: reader}
 }
 
+func NewConstant(passphrase string) PassphraseReader {
+	return &constantPassphraseReader{passphrase: passphrase}
+}
+
+type constantPassphraseReader struct {
+	passphrase string
+}
+
+func (r *constantPassphraseReader) ReadPassphrase() (string, error) {
+	return r.passphrase, nil
+}
+
 type terminalPassphraseReader struct{}
 
 func (r *terminalPassphraseReader) ReadPassphrase() (string, error) {
