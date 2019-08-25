@@ -37,3 +37,30 @@ func TestReaderReaderEmpty(t *testing.T) {
 	assert.NoError(t, err)
 	assert.Equal(t, "", pf)
 }
+
+type mockPassphraseReader struct {
+	constantPassphrase string
+	callCount          int
+}
+
+func (r *mockPassphraseReader) ReadPassphrase() (string, error) {
+	r.callCount++
+	return r.constantPassphrase, nil
+}
+
+func TestCachingPassphraseReader_ReadPassphrase(t *testing.T) {
+	upstream := mockPassphraseReader{constantPassphrase: "phrase"}
+	caching := NewCaching(&upstream)
+
+	// The first read should penetrate the cache.
+	phrase, err := caching.ReadPassphrase()
+	assert.NoError(t, err)
+	assert.Equal(t, "phrase", phrase)
+	assert.Equal(t, 1, upstream.callCount)
+
+	// But the second read should not (so callCount should remain the same).
+	phrase, err = caching.ReadPassphrase()
+	assert.NoError(t, err)
+	assert.Equal(t, "phrase", phrase)
+	assert.Equal(t, 1, upstream.callCount)
+}
