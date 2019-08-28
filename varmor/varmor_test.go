@@ -44,6 +44,13 @@ func TestWrongVersion(t *testing.T) {
 	assert.Nil(t, b)
 }
 
+func TestNotSaltybox(t *testing.T) {
+	b, err := Unwrap("something not looking like saltybox data")
+	assert.Error(t, err)
+	assert.Equal(t, "input unrecognized as saltybox data", err.Error())
+	assert.Nil(t, b)
+}
+
 func TestAllByteValues(t *testing.T) {
 	allBytes := make([]byte, 256)
 	for i := 0; i <= 255; i++ {
