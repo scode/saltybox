@@ -47,6 +47,8 @@ jobs:
         # Ensure update works, including that it only attempts to read the passphrase once.
         - echo -n test | ./saltybox --passphrase-stdin update -i testdata/hello.txt -o /tmp/hello-encrypted2.txt.salty
         - diff testdata/hello.txt /tmp/hello-decrypted2.txt
+
+        - /bin/false
     - stage: coveralls
       install:
         # cd elsewhere to avoid `go get` thinking we want to pull it down as a dependency in our project
