@@ -8,9 +8,9 @@ jobs:
   include:
     - stage: test
       go:
+        - "1.13.x"
         - "1.11.x"
         - "1.12.x"
-        - "1.13.x"
       install:
         - curl -sfL https://install.goreleaser.com/github.com/golangci/golangci-lint.sh | sh -s v1.19.1
         - ./bin/golangci-lint --version
