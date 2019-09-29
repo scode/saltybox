@@ -128,4 +128,5 @@ func main() {
 	}
 
 	err := app.Run(os.Args)
+	log.Fatal("test")
 }
