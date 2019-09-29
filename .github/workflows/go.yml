@@ -44,7 +44,7 @@ jobs:
 
     - name: codecov
       run: |
-        bash <(curl -s https://codecov.io/bash)
+        bash <(curl -s https://codecov.io/bash) -t ${{ secrets.CODECOV_REPO_TOKEN }}
   build_go_1_12:
     name: go / 1.12 / build+test
     runs-on: ubuntu-latest
