@@ -40,11 +40,27 @@ _template_script: &_template_script
 
 jobs:
   include:
-    - stage: test
+    - stage: test-go-1.13
       go:
         - "1.13.x"
-        - "1.11.x"
+      install:
+        - curl -sfL https://install.goreleaser.com/github.com/golangci/golangci-lint.sh | sh -s v1.19.1
+        - ./bin/golangci-lint --version
+
+      script: *_template_script
+
+    - stage: test-go-1.12
+      go:
         - "1.12.x"
+      install:
+        - curl -sfL https://install.goreleaser.com/github.com/golangci/golangci-lint.sh | sh -s v1.19.1
+        - ./bin/golangci-lint --version
+
+      script: *_template_script
+
+    - stage: test-go-1.11
+      go:
+        - "1.11.x"
       install:
         - curl -sfL https://install.goreleaser.com/github.com/golangci/golangci-lint.sh | sh -s v1.19.1
         - ./bin/golangci-lint --version
