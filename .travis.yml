@@ -10,9 +10,9 @@ matrix:
     - go: "1.13.x"
       env: GO111MODULE=on
     - go: "1.12.x"
-      env: GO111MODULE=on
+      env: GO111MODULE=onn
     - go: "1.11.x"
-      env: GO111MODULE=on
+      env: GO111MODULE=onnn
 
 _template_script: &_template_script
   - go build
