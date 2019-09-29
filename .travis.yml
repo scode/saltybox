@@ -1,18 +1,13 @@
 language: go
 
-#env:
-#  # travis by default puts us in a GOPATH which causes module support to be turned off. force it on.
-#  - GO111MODULE=on
+env:
+  # travis by default puts us in a GOPATH which causes module support to be turned off. force it on.
+  - GO111MODULE=on
 
-
-matrix:
-  include:
-    - go: "1.13.x"
-      env: GO111MODULE=on
-    - go: "1.12.x"
-      env: GO111MODULE=onn
-    - go: "1.11.x"
-      env: GO111MODULE=onnn
+go:
+  - "1.13.x"
+  - "1.12.x"
+  - "1.11.x"
 
 _template_script: &_template_script
   - go build
