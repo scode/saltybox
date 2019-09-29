@@ -39,7 +39,7 @@ _template_script: &_template_script
   - diff testdata/hello.txt /tmp/hello-decrypted2.txt
 
 jobs:
-  include:
+  keff:
     - stage: test-go-1.13
       go:
         - "1.13.x"
