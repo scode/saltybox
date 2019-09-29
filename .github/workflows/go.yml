@@ -2,7 +2,7 @@ name: Go
 on: [push]
 jobs:
   build_go_1_13:
-    name: build_go_1_13
+    name: Build+test on Go 1.13
     runs-on: ubuntu-latest
     steps:
     - name: setup go 1.13
