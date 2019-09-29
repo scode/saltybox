@@ -5,6 +5,12 @@ env:
   - GO111MODULE=on
 
 
+matrix:
+  include:
+    - go: "1.13.x"
+    - go: "1.12.x"
+    - go: "1.11.x"
+
 _template_script: &_template_script
   - go build
   - go test ./...
@@ -77,41 +83,4 @@ jobs:
         # Do not fail the build if goveralls fails. We already ran tests earlier, this is just for reporting purposes
         # and we don't want the build to fail just because coveralls isn't accessible or similar.
         - $GOPATH/bin/goveralls -service=travis-ci || echo "goveralls failed (ignoring)"
-  include:
-    - stage: test-go-1.13
-      go:
-        - "1.13.x"
-      install:
-        - curl -sfL https://install.goreleaser.com/github.com/golangci/golangci-lint.sh | sh -s v1.19.1
-        - ./bin/golangci-lint --version
 
-      script: *_template_script
-
-    - stage: test-go-1.12
-      go:
-        - "1.12.x"
-      install:
-        - curl -sfL https://install.goreleaser.com/github.com/golangci/golangci-lint.sh | sh -s v1.19.1
-        - ./bin/golangci-lint --version
-
-      script: *_template_script
-
-    - stage: test-go-1.11
-      go:
-        - "1.11.x"
-      install:
-        - curl -sfL https://install.goreleaser.com/github.com/golangci/golangci-lint.sh | sh -s v1.19.1
-        - ./bin/golangci-lint --version
-
-      script: *_template_script
-
-    - stage: coveralls
-      install:
-        # cd elsewhere to avoid `go get` thinking we want to pull it down as a dependency in our project
-        # and modify go.{mod,sum}.
-        - mkdir /tmp/goveralls && go get github.com/mattn/goveralls
-      script:
-        - go get
-        # Do not fail the build if goveralls fails. We already ran tests earlier, this is just for reporting purposes
-        # and we don't want the build to fail just because coveralls isn't accessible or similar.
-        - $GOPATH/bin/goveralls -service=travis-ci || echo "goveralls failed (ignoring)"
