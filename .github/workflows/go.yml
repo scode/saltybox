@@ -22,7 +22,7 @@ jobs:
       run: go build -v saltybox.go
 
     - name: go test
-      run: go test -v ./...
+      run: go test -race -coverprofile=coverage.txt -covermode=atomic -v ./...
 
     - name: decrypt known cipher text
       run: |
@@ -41,6 +41,10 @@ jobs:
         echo -n test | ./saltybox --passphrase-stdin update -i /tmp/updated_data.txt -o /tmp/hello-encrypted2.txt.salty
         echo -n test | ./saltybox --passphrase-stdin decrypt -i /tmp/hello-encrypted2.txt.salty -o /tmp/updated_data-decrypted.txt
         diff /tmp/updated_data.txt /tmp/updated_data-decrypted.txt
+
+    - name: codecov
+      run: |
+        bash <(curl -s https://codecov.io/bash) -t ${{ secrets.CODECOV_REPO_TOKEN }}
   build_go_1_12:
     name: go / 1.12 / build+test
     runs-on: ubuntu-latest
