@@ -23,3 +23,22 @@ jobs:
 
     - name: go test
       run: go test -v ./...
+  lint:
+    name: 1.13 / lint
+    runs-on: ubuntu-latest
+    steps:
+    - name: setup go 1.13
+      uses: actions/setup-go@v1
+      with:
+        go-version: 1.13
+      id: go
+
+    - name: checkout code
+      uses: actions/checkout@v1
+
+    - name: install golangci-lint
+      run: curl -sfL https://install.goreleaser.com/github.com/golangci/golangci-lint.sh | sh -s v1.19.1
+      run: ./bin/golangci-lint --version
+
+    - name: golangci-lint run
+      run: ./bin/golangci-lint run -v --max-issues-per-linter 500 --max-same-issues 500
