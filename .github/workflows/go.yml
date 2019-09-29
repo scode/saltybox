@@ -19,4 +19,7 @@ jobs:
         go get -v ./...
 
     - name: build
-      run: go build -v .
+      run: go build -v saltybox.go
+
+    - name: test
+      run: go test -v ./...
