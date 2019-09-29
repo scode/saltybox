@@ -24,23 +24,8 @@ jobs:
     - name: go test
       run: go test -race -coverprofile=coverage.txt -covermode=atomic -v ./...
 
-    - name: decrypt known cipher text
-      run: |
-        echo -n test | ./saltybox --passphrase-stdin decrypt -i testdata/hello.txt.salty -o /tmp/hello-decrypted1.txt
-        diff testdata/hello.txt /tmp/hello-decrypted1.txt
-
-    - name: encrypt + decrypt known plain text
-      run: |
-        echo -n test | ./saltybox --passphrase-stdin encrypt -i testdata/hello.txt -o /tmp/hello-encrypted2.txt.salty
-        echo -n test | ./saltybox --passphrase-stdin decrypt -i /tmp/hello-encrypted2.txt.salty -o /tmp/hello-decrypted2.txt
-        diff testdata/hello.txt /tmp/hello-decrypted2.txt
-
-    - name: saltabox update works and only reads passphrase once
-      run: |
-        echo "updated data" > /tmp/updated_data.txt
-        echo -n test | ./saltybox --passphrase-stdin update -i /tmp/updated_data.txt -o /tmp/hello-encrypted2.txt.salty
-        echo -n test | ./saltybox --passphrase-stdin decrypt -i /tmp/hello-encrypted2.txt.salty -o /tmp/updated_data-decrypted.txt
-        diff /tmp/updated_data.txt /tmp/updated_data-decrypted.txt
+    - name: cmdline tests
+      run: tests/cmdline.sh
 
     - name: codecov
       run: |
@@ -68,23 +53,8 @@ jobs:
     - name: go test
       run: go test -v ./...
 
-    - name: decrypt known cipher text
-      run: |
-        echo -n test | ./saltybox --passphrase-stdin decrypt -i testdata/hello.txt.salty -o /tmp/hello-decrypted1.txt
-        diff testdata/hello.txt /tmp/hello-decrypted1.txt
-
-    - name: encrypt + decrypt known plain text
-      run: |
-        echo -n test | ./saltybox --passphrase-stdin encrypt -i testdata/hello.txt -o /tmp/hello-encrypted2.txt.salty
-        echo -n test | ./saltybox --passphrase-stdin decrypt -i /tmp/hello-encrypted2.txt.salty -o /tmp/hello-decrypted2.txt
-        diff testdata/hello.txt /tmp/hello-decrypted2.txt
-
-    - name: saltabox update works and only reads passphrase once
-      run: |
-        echo "updated data" > /tmp/updated_data.txt
-        echo -n test | ./saltybox --passphrase-stdin update -i /tmp/updated_data.txt -o /tmp/hello-encrypted2.txt.salty
-        echo -n test | ./saltybox --passphrase-stdin decrypt -i /tmp/hello-encrypted2.txt.salty -o /tmp/updated_data-decrypted.txt
-        diff /tmp/updated_data.txt /tmp/updated_data-decrypted.txt
+    - name: cmdline tests
+      run: tests/cmdline.sh
   build_go_1_11:
     name: go / 1.11 / build+test
     runs-on: ubuntu-latest
@@ -108,24 +78,8 @@ jobs:
     - name: go test
       run: go test -v ./...
 
-    - name: decrypt known cipher text
-      run: |
-        echo -n test | ./saltybox --passphrase-stdin decrypt -i testdata/hello.txt.salty -o /tmp/hello-decrypted1.txt
-        diff testdata/hello.txt /tmp/hello-decrypted1.txt
-
-    - name: encrypt + decrypt known plain text
-      run: |
-        echo -n test | ./saltybox --passphrase-stdin encrypt -i testdata/hello.txt -o /tmp/hello-encrypted2.txt.salty
-        echo -n test | ./saltybox --passphrase-stdin decrypt -i /tmp/hello-encrypted2.txt.salty -o /tmp/hello-decrypted2.txt
-        diff testdata/hello.txt /tmp/hello-decrypted2.txt
-
-    - name: saltabox update works and only reads passphrase once
-      run: |
-        echo "updated data" > /tmp/updated_data.txt
-        echo -n test | ./saltybox --passphrase-stdin update -i /tmp/updated_data.txt -o /tmp/hello-encrypted2.txt.salty
-        echo -n test | ./saltybox --passphrase-stdin decrypt -i /tmp/hello-encrypted2.txt.salty -o /tmp/updated_data-decrypted.txt
-        diff /tmp/updated_data.txt /tmp/updated_data-decrypted.txt
-
+    - name: cmdline tests
+      run: tests/cmdline.sh
   lint:
     name: lint
     runs-on: ubuntu-latest
