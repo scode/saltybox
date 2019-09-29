@@ -1,8 +1,8 @@
-name: Go
+name: CI
 on: [push]
 jobs:
   build_go_1_13:
-    name: 1.13 / build+test
+    name: go / 1.13 / build+test
     runs-on: ubuntu-latest
     steps:
     - name: setup go 1.13
@@ -23,8 +23,27 @@ jobs:
 
     - name: go test
       run: go test -v ./...
+
+    - name: decrypt known cipher text
+      run: |
+        echo -n test | ./saltybox --passphrase-stdin decrypt -i testdata/hello.txt.salty -o /tmp/hello-decrypted1.txt
+        diff testdata/hello.txt /tmp/hello-decrypted1.txt
+
+    - name: encrypt + decrypt known plain text
+      run: |
+        echo -n test | ./saltybox --passphrase-stdin encrypt -i testdata/hello.txt -o /tmp/hello-encrypted2.txt.salty
+        echo -n test | ./saltybox --passphrase-stdin decrypt -i /tmp/hello-encrypted2.txt.salty -o /tmp/hello-decrypted2.txt
+        diff testdata/hello.txt /tmp/hello-decrypted2.txt
+
+    - name: saltabox update works and only reads passphrase once
+      run: |
+        echo "updated data" > /tmp/updated_data.txt
+        echo -n test | ./saltybox --passphrase-stdin update -i /tmp/updated_data.txt -o /tmp/hello-encrypted2.txt.salty
+        echo -n test | ./saltybox --passphrase-stdin decrypt -i /tmp/hello-encrypted2.txt.salty -o /tmp/updated_data-decrypted.txt
+        diff /tmp/updated_data.txt /tmp/updated_data-decrypted.txt
+
   lint:
-    name: 1.13 / lint
+    name: lint
     runs-on: ubuntu-latest
     steps:
     - name: setup go 1.13
