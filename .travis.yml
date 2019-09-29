@@ -5,8 +5,7 @@ env:
   - GO111MODULE=on
 
 
-
-&test script:
+_template_script: &_template_script
   - go build
   - go test ./...
 
@@ -49,7 +48,8 @@ jobs:
       install:
         - curl -sfL https://install.goreleaser.com/github.com/golangci/golangci-lint.sh | sh -s v1.19.1
         - ./bin/golangci-lint --version
-      *test
+
+      script: *_template_script
 
     - stage: coveralls
       install:
