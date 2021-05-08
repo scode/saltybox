@@ -7,7 +7,7 @@ import (
 	"io/ioutil"
 	"os"
 
-	"golang.org/x/crypto/ssh/terminal"
+	"golang.org/x/term"
 )
 
 type PassphraseReader interface {
@@ -41,7 +41,7 @@ func (r *constantPassphraseReader) ReadPassphrase() (string, error) {
 type terminalPassphraseReader struct{}
 
 func (r *terminalPassphraseReader) ReadPassphrase() (string, error) {
-	if !terminal.IsTerminal(0) {
+	if !term.IsTerminal(0) {
 		return "", errors.New("cannot read passphrase from terminal - stdin is not a terminal")
 	}
 
@@ -49,7 +49,7 @@ func (r *terminalPassphraseReader) ReadPassphrase() (string, error) {
 	if err != nil {
 		return "", err
 	}
-	phrase, err := terminal.ReadPassword(0)
+	phrase, err := term.ReadPassword(0)
 	if err != nil {
 		return "", fmt.Errorf("failure reading passphrase: %s", err)
 	}
