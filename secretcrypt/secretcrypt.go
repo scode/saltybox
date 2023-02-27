@@ -101,9 +101,9 @@ func Encrypt(passphrase string, plaintext []byte) ([]byte, error) {
 //
 // Errors conditions include (but may not be limited to):
 //
-//   * The input is truncated.
-//   * The input is otherwise invalid (arbitrary corruption).
-//   * The passphrase does not match that which was used during encryption.
+//   - The input is truncated.
+//   - The input is otherwise invalid (arbitrary corruption).
+//   - The passphrase does not match that which was used during encryption.
 //
 // There is no way to tell programatically whether an error is due to a bad passphrase or
 // for other reasons.
