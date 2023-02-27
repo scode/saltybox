@@ -37,7 +37,7 @@ func Encrypt(inpath string, outpath string, preader preader.PassphraseReader) er
 		return fmt.Errorf("encryption failed: %s", err)
 	}
 
-	err = ioutil.WriteFile(outpath, []byte(encryptedString), 0700)
+	err = ioutil.WriteFile(outpath, []byte(encryptedString), 0600)
 	if err != nil {
 		return fmt.Errorf("failed to write to %s: %s", outpath, err)
 	}
@@ -74,7 +74,7 @@ func Decrypt(inpath string, outpath string, preader preader.PassphraseReader) er
 		return fmt.Errorf("failed to decrypt: %s", err)
 	}
 
-	err = ioutil.WriteFile(outpath, plaintext, 0700)
+	err = ioutil.WriteFile(outpath, plaintext, 0600)
 	if err != nil {
 		return fmt.Errorf("failed to write to %s: %s", outpath, err)
 	}
