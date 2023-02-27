@@ -24,7 +24,7 @@ func TestEncryptDecryptUpdate(t *testing.T) {
 
 	// Encrypt
 	plainPath := filepath.Join(tempdir, "plain")
-	err = ioutil.WriteFile(plainPath, []byte("super secret"), 0777)
+	err = ioutil.WriteFile(plainPath, []byte("super secret"), 0600)
 	if !assert.NoError(t, err) {
 		assert.FailNow(t, "failed to write secret to file")
 	}
@@ -49,7 +49,7 @@ func TestEncryptDecryptUpdate(t *testing.T) {
 
 	// Update with wrong passphrase
 	updatedPlainPath := filepath.Join(tempdir, "updatedplain")
-	err = ioutil.WriteFile(updatedPlainPath, []byte("updated super secret"), 0777)
+	err = ioutil.WriteFile(updatedPlainPath, []byte("updated super secret"), 0600)
 	assert.NoError(t, err)
 	defer checkedRemove(t, updatedPlainPath)
 
@@ -79,7 +79,7 @@ func TestBackwardsCompatibility(t *testing.T) {
 	defer checkedRemove(t, tempdir)
 
 	encryptedPath := filepath.Join(tempdir, "plain")
-	err = ioutil.WriteFile(encryptedPath, []byte("saltybox1:RF0qX8mpCMXVBq6zxHfamdiT64s6Pwvb99Qj9gV61sMAAAAAAAAAFE6RVTWMhBCMJGL0MmgdDUBHoJaW"), 0777)
+	err = ioutil.WriteFile(encryptedPath, []byte("saltybox1:RF0qX8mpCMXVBq6zxHfamdiT64s6Pwvb99Qj9gV61sMAAAAAAAAAFE6RVTWMhBCMJGL0MmgdDUBHoJaW"), 0600)
 	assert.NoError(t, err)
 	defer checkedRemove(t, encryptedPath)
 
