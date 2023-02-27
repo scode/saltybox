@@ -27,10 +27,10 @@ func Wrap(body []byte) string {
 //
 // Errors conditions include:
 //
-//   * The input is provably truncated.
-//   * Base64 decoding failure.
-//   * Input indicates a future version of of the format that we do not support.
-//   * Input does not appear to be the the result of Wrap().
+//   - The input is provably truncated.
+//   - Base64 decoding failure.
+//   - Input indicates a future version of of the format that we do not support.
+//   - Input does not appear to be the the result of Wrap().
 func Unwrap(varmoredBody string) ([]byte, error) {
 	if len(varmoredBody) < len(v1Magic) {
 		return nil, errors.New("input size smaller than magic marker; likely truncated")
