@@ -29,7 +29,7 @@ Its primary intended use-case is for encrypting small amounts of personal data f
 # Installation
 
 ```
- $ GO111MODULE=on go get github.com/scode/saltybox
+ $ go install github.com/scode/saltybox@latest
 ```
 
 Assuming `$GOPATH/bin` (default: `~/go/bin`) is in your `$PATH`, saltybox is now ready
