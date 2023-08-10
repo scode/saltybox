@@ -1,14 +1,14 @@
 name: CI
 on: [push]
 jobs:
-  build_go_1_20:
-    name: go / 1.20 / build+test
+  build_go_1_21:
+    name: go / 1.21 / build+test
     runs-on: ubuntu-latest
     steps:
-    - name: setup go 1.20
+    - name: setup go 1.21
       uses: actions/setup-go@v1
       with:
-        go-version: 1.20
+        go-version: 1.21
       id: go
 
     - name: checkout code
@@ -30,6 +30,31 @@ jobs:
     - name: codecov
       run: |
         bash <(curl -s https://codecov.io/bash) -t ${{ secrets.CODECOV_REPO_TOKEN }}
+  build_go_1_20:
+    name: go / 1.20 / build+test
+    runs-on: ubuntu-latest
+    steps:
+    - name: setup go 1.20
+      uses: actions/setup-go@v1
+      with:
+        go-version: 1.20
+      id: go
+
+    - name: checkout code
+      uses: actions/checkout@v1
+
+    - name: go get
+      run: |
+        go get -v ./...
+
+    - name: go build
+      run: go build -v saltybox.go
+
+    - name: go test
+      run: go test -v ./...
+
+    - name: cmdline tests
+      run: tests/cmdline.sh
   build_go_1_19:
     name: go / 1.19 / build+test
     runs-on: ubuntu-latest
