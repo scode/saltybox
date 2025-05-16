@@ -1,28 +1,33 @@
+version: "2"
 linters:
   enable:
-    - deadcode
-    - errcheck
-    - gofmt
-    - goimports
-    - golint
     - gosec
-    - gosimple
-    - govet
-    - ineffassign
-    - megacheck
     - misspell
     - staticcheck
-    - structcheck
-    - stylecheck
-    - typecheck
     - unparam
-    - unused
-    - varcheck
-issues:
-  exclude:
-    # gosec:G404 causes false positive claim that we're using math.rand instead of crypto.rand even though we
-    # clearly are not.
-    - G404
-    # gosec:G304 causes false positive "Potential file inclusion via variable". Would rather exclude this class
-    # of issue than entirely disable gosec for such lines (I still want e.g. error checking).
-    - G304
+  exclusions:
+    generated: lax
+    presets:
+      - comments
+      - common-false-positives
+      - legacy
+      - std-error-handling
+    rules:
+      - path: (.+)\.go$
+        text: G404
+      - path: (.+)\.go$
+        text: G304
+    paths:
+      - third_party$
+      - builtin$
+      - examples$
+formatters:
+  enable:
+    - gofmt
+    - goimports
+  exclusions:
+    generated: lax
+    paths:
+      - third_party$
+      - builtin$
+      - examples$
