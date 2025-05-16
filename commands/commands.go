@@ -2,7 +2,6 @@ package commands
 
 import (
 	"fmt"
-	"io/ioutil"
 	"os"
 	"path"
 
@@ -23,7 +22,7 @@ func encryptBytes(passphrase string, plaintext []byte) (string, error) {
 }
 
 func Encrypt(inpath string, outpath string, preader preader.PassphraseReader) error {
-	plaintext, err := ioutil.ReadFile(inpath)
+	plaintext, err := os.ReadFile(inpath)
 	if err != nil {
 		return fmt.Errorf("failed to read from %s: %s", inpath, err)
 	}
@@ -37,7 +36,7 @@ func Encrypt(inpath string, outpath string, preader preader.PassphraseReader) er
 		return fmt.Errorf("encryption failed: %s", err)
 	}
 
-	err = ioutil.WriteFile(outpath, []byte(encryptedString), 0600)
+	err = os.WriteFile(outpath, []byte(encryptedString), 0600)
 	if err != nil {
 		return fmt.Errorf("failed to write to %s: %s", outpath, err)
 	}
@@ -60,7 +59,7 @@ func decryptString(passphrase string, encryptedString string) ([]byte, error) {
 }
 
 func Decrypt(inpath string, outpath string, preader preader.PassphraseReader) error {
-	varmoredBytes, err := ioutil.ReadFile(inpath)
+	varmoredBytes, err := os.ReadFile(inpath)
 	if err != nil {
 		return fmt.Errorf("failed to read from %s: %s", inpath, err)
 	}
@@ -74,7 +73,7 @@ func Decrypt(inpath string, outpath string, preader preader.PassphraseReader) er
 		return fmt.Errorf("failed to decrypt: %s", err)
 	}
 
-	err = ioutil.WriteFile(outpath, plaintext, 0600)
+	err = os.WriteFile(outpath, plaintext, 0600)
 	if err != nil {
 		return fmt.Errorf("failed to write to %s: %s", outpath, err)
 	}
@@ -86,7 +85,7 @@ func Update(plainfile string, cryptfile string, pr preader.PassphraseReader) (er
 	// Decrypt existing file in order to validate that the provided passphrase is correct,
 	// in order to prevent accidental changing of the passphrase (but we discard the plain
 	// text).
-	varmoredBytes, err := ioutil.ReadFile(cryptfile)
+	varmoredBytes, err := os.ReadFile(cryptfile)
 	if err != nil {
 		return fmt.Errorf("failed to read from %s: %s", cryptfile, err)
 	}
@@ -107,7 +106,7 @@ func Update(plainfile string, cryptfile string, pr preader.PassphraseReader) (er
 	// file, but never corrupt (assuming a correctly functioning filesystem I/O stack).
 	cryptDir, _ := path.Split(cryptfile)
 
-	tmpfile, err := ioutil.TempFile(cryptDir, "saltybox-update-tmp")
+	tmpfile, err := os.CreateTemp(cryptDir, "saltybox-update-tmp")
 	if err != nil {
 		return fmt.Errorf("failed to create tempfile: %s", err)
 	}
