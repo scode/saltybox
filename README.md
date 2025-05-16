@@ -24,7 +24,7 @@ Its primary intended use-case is for encrypting small amounts of personal data f
 
 # Requirements
 
-* Go 1.17 or later is required to be [installed](https://golang.org/doc/install).
+* Go 1.20 or later is required to be [installed](https://golang.org/doc/install).
 
 # Installation
 
