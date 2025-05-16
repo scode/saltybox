@@ -4,7 +4,6 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"io/ioutil"
 	"os"
 
 	"golang.org/x/term"
@@ -85,7 +84,7 @@ type readerPassphraseReader struct {
 }
 
 func (r *readerPassphraseReader) ReadPassphrase() (string, error) {
-	data, err := ioutil.ReadAll(r.reader)
+	data, err := io.ReadAll(r.reader)
 	if err != nil {
 		return "", fmt.Errorf("error reading passphrase: %v", err)
 	}
