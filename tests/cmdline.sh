@@ -23,3 +23,8 @@ echo "updated data" > "${tmpdir}/updated_data.txt"
 echo -n test | ./saltybox --passphrase-stdin update -i "${tmpdir}/updated_data.txt" -o "${tmpdir}/hello-encrypted2.txt.salty"
 echo -n test | ./saltybox --passphrase-stdin decrypt -i "${tmpdir}/hello-encrypted2.txt.salty" -o "${tmpdir}/updated_data-decrypted.txt"
 diff "${tmpdir}/updated_data.txt" "${tmpdir}/updated_data-decrypted.txt"
+
+# ensure we exit with non-zero in case of errors
+./saltybox --passphrase-stdin decrypt -i testdata/nonexistent.salty -o foo 2>/dev/null && (echo "saltybox should have failed" >&2 ; exit 1)
+
+
