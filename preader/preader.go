@@ -40,7 +40,8 @@ func (r *constantPassphraseReader) ReadPassphrase() (string, error) {
 type terminalPassphraseReader struct{}
 
 func (r *terminalPassphraseReader) ReadPassphrase() (string, error) {
-	if !term.IsTerminal(0) {
+	fd := int(os.Stdin.Fd())
+	if !term.IsTerminal(fd) {
 		return "", errors.New("cannot read passphrase from terminal - stdin is not a terminal")
 	}
 
@@ -48,7 +49,7 @@ func (r *terminalPassphraseReader) ReadPassphrase() (string, error) {
 	if err != nil {
 		return "", err
 	}
-	phrase, err := term.ReadPassword(0)
+	phrase, err := term.ReadPassword(fd)
 	if err != nil {
 		return "", fmt.Errorf("failure reading passphrase: %s", err)
 	}
