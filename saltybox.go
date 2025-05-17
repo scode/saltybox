@@ -8,7 +8,7 @@ import (
 	"github.com/scode/saltybox/commands"
 	"github.com/scode/saltybox/preader"
 
-	"github.com/urfave/cli"
+	"github.com/urfave/cli/v2"
 )
 
 func main() {
@@ -31,14 +31,14 @@ func main() {
 	var outputArg string
 
 	app.Flags = []cli.Flag{
-		cli.BoolFlag{
+		&cli.BoolFlag{
 			Name:        "passphrase-stdin",
 			Usage:       "Read passphrase from stdin instead of from terminal",
 			Destination: &passphraseStdinArg,
 		},
 	}
 
-	app.Commands = []cli.Command{
+	app.Commands = []*cli.Command{
 		{
 			Name:    "encrypt",
 			Aliases: []string{"e"},
@@ -48,14 +48,16 @@ func main() {
 
    If the output file does not exist, it will be created. If it does exist, it will be truncated and then written to.`,
 			Flags: []cli.Flag{
-				cli.StringFlag{
-					Name:        "input, i",
+				&cli.StringFlag{
+					Name:        "input",
+					Aliases:     []string{"i"},
 					Usage:       "Path to the file whose contents is to be encrypted",
 					Required:    true,
 					Destination: &inputArg,
 				},
-				cli.StringFlag{
-					Name:        "output, o",
+				&cli.StringFlag{
+					Name:        "output",
+					Aliases:     []string{"o"},
 					Usage:       "Path to the file to write the encrypted text to",
 					Required:    true,
 					Destination: &outputArg,
@@ -67,21 +69,23 @@ func main() {
 		},
 		{
 			Name:    "decrypt",
-			Aliases: []string{"e"},
+			Aliases: []string{"d"},
 			Usage:   "Decrypt a file",
 			Description: `Decrypts the contents of a file (the "input", specified with -i) and writes the plain text output
    to another file (the "output", specified with -o).
 
    If the output file does not exist, it will be created. If it does exist, it will be truncated and then written to.`,
 			Flags: []cli.Flag{
-				cli.StringFlag{
-					Name:        "input, i",
+				&cli.StringFlag{
+					Name:        "input",
+					Aliases:     []string{"i"},
 					Usage:       "Path to the file whose contents is to be decrypted",
 					Required:    true,
 					Destination: &inputArg,
 				},
-				cli.StringFlag{
-					Name:        "output, o",
+				&cli.StringFlag{
+					Name:        "output",
+					Aliases:     []string{"o"},
 					Usage:       "Path to the file to write the unencrypted text to",
 					Required:    true,
 					Destination: &outputArg,
@@ -93,7 +97,7 @@ func main() {
 		},
 		{
 			Name:    "update",
-			Aliases: []string{"e"},
+			Aliases: []string{"u"},
 			Usage:   "Update an encrypted file with new content",
 			Description: `Update an existing encrypted file (the "output", specified with -o) to contain the encrypted copy
    of the input (specified with -i).
@@ -104,14 +108,16 @@ func main() {
    the user thereby avoids accidentally changing the passphrase as would be possible if using the encrypt command and separately
    replacing the target file.`,
 			Flags: []cli.Flag{
-				cli.StringFlag{
-					Name:        "input, i",
+				&cli.StringFlag{
+					Name:        "input",
+					Aliases:     []string{"i"},
 					Usage:       "Path to the file whose contents is to be encrypted",
 					Required:    true,
 					Destination: &inputArg,
 				},
-				cli.StringFlag{
-					Name:        "output, o",
+				&cli.StringFlag{
+					Name:        "output",
+					Aliases:     []string{"o"},
 					Usage:       "Path to the existing saltybox file to replace with encrypted text",
 					Required:    true,
 					Destination: &outputArg,
