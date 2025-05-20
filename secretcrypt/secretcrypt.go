@@ -28,8 +28,8 @@ const (
 	scryptR = 8
 	scryptP = 1
 
-	keyLen             = 32
-	secretboxNounceLen = 24
+	keyLen            = 32
+	secretboxNonceLen = 24
 )
 
 func genKey(passphrase string, salt []byte) (*[keyLen]byte, error) {
@@ -64,19 +64,19 @@ func Encrypt(passphrase string, plaintext []byte) ([]byte, error) {
 		return nil, err
 	}
 
-	var nounce [secretboxNounceLen]byte
-	n, err = rand.Read(nounce[:])
+	var nonce [secretboxNonceLen]byte
+	n, err = rand.Read(nonce[:])
 	if err != nil {
 		return nil, fmt.Errorf("rand.Read() should never fail, but did: %v", err)
 	}
-	if n != len(nounce) {
+	if n != len(nonce) {
 		return nil, fmt.Errorf("rand.Read() should always return the requested length, but did not: %v", n)
 	}
 
 	sealedBox := secretbox.Seal(
 		nil,
 		plaintext,
-		&nounce,
+		&nonce,
 		secretKey,
 	)
 
@@ -84,7 +84,7 @@ func Encrypt(passphrase string, plaintext []byte) ([]byte, error) {
 	if _, err = buf.Write(salt[:]); err != nil {
 		return nil, fmt.Errorf("infallible Write() failed: %v", err)
 	}
-	if _, err = buf.Write(nounce[:]); err != nil {
+	if _, err = buf.Write(nonce[:]); err != nil {
 		return nil, fmt.Errorf("infallible Write() failed: %v", err)
 	}
 	if err = binary.Write(&buf, binary.BigEndian, int64(len(sealedBox))); err != nil {
@@ -119,12 +119,12 @@ func Decrypt(passphrase string, crypttext []byte) ([]byte, error) {
 		return nil, fmt.Errorf("ReadFull() succeeded yet byte count was not as expected: %v", n)
 	}
 
-	var nounce [secretboxNounceLen]byte
-	n, err = io.ReadFull(cryptReader, nounce[:])
+	var nonce [secretboxNonceLen]byte
+	n, err = io.ReadFull(cryptReader, nonce[:])
 	if err != nil {
-		return nil, fmt.Errorf("input likely truncated while reading nounce: %v", err)
+		return nil, fmt.Errorf("input likely truncated while reading nonce: %v", err)
 	}
-	if n != len(nounce) {
+	if n != len(nonce) {
 		return nil, fmt.Errorf("ReadFull() succeeded yet byte count was not as expected: %v", n)
 	}
 
@@ -153,7 +153,7 @@ func Decrypt(passphrase string, crypttext []byte) ([]byte, error) {
 	plaintext, success := secretbox.Open(
 		nil,
 		sealedBox,
-		&nounce,
+		&nonce,
 		secretKey,
 	)
 	if !success {
