@@ -137,6 +137,5 @@ func main() {
 		// should be exiting for us. But if we do, let's make sure we
 		// log and exit with an appropriate code.
 		log.Fatal(err)
-		os.Exit(1)
 	}
 }
