@@ -133,10 +133,6 @@ func main() {
 
 	err := rootCmd.Run(context.Background(), os.Args)
 	if err != nil {
-		// We do not actually expect to get here because urfave
-		// should be exiting for us. But if we do, let's make sure we
-		// log and exit with an appropriate code.
 		log.Fatal(err)
-		os.Exit(1)
 	}
 }
