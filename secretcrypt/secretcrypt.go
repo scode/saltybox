@@ -132,11 +132,18 @@ func Decrypt(passphrase string, crypttext []byte) ([]byte, error) {
 	if err = binary.Read(cryptReader, binary.BigEndian, &sealedBoxLen); err != nil {
 		return nil, fmt.Errorf("input likely truncated while reading sealed box: %v", err)
 	}
+	if sealedBoxLen < 0 {
+		return nil, errors.New("negative sealed box length")
+	}
+	maxInt := int(^uint(0) >> 1)
+	if sealedBoxLen > int64(maxInt) {
+		return nil, errors.New("sealed box length exceeds max int")
+	}
 	if sealedBoxLen > int64(len(crypttext)) {
 		return nil, errors.New("truncated or corrupt input; claimed length greater than available input")
 	}
 
-	sealedBox := make([]byte, sealedBoxLen)
+	sealedBox := make([]byte, int(sealedBoxLen))
 	n, err = io.ReadFull(cryptReader, sealedBox)
 	if err != nil {
 		return nil, errors.New("truncated or corrupt input (while reading sealed box)")

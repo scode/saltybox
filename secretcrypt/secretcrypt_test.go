@@ -1,7 +1,9 @@
 package secretcrypt
 
 import (
+	"encoding/binary"
 	"math/rand"
+	"strconv"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -33,4 +35,35 @@ func TestEncryptDecryptDoesNotCorrupt(t *testing.T) {
 		}
 		passthrough(t, "testphrase", b)
 	}
+}
+
+func TestDecryptNegativeLength(t *testing.T) {
+	crypted, err := Encrypt("pass", []byte("hello"))
+	assert.NoError(t, err)
+
+	offset := saltLen + secretboxNonceLen
+	b := make([]byte, 8)
+	binary.BigEndian.PutUint64(b, ^uint64(0))
+	copy(crypted[offset:], b)
+
+	_, err = Decrypt("pass", crypted)
+	assert.ErrorContains(t, err, "negative")
+}
+
+func TestDecryptTooLargeLength(t *testing.T) {
+	if strconv.IntSize >= 64 {
+		t.Skip("int is >= 64-bit; cannot represent a value greater than max int")
+	}
+
+	crypted, err := Encrypt("pass", []byte("hello"))
+	assert.NoError(t, err)
+
+	offset := saltLen + secretboxNonceLen
+	large := uint64(int(^uint(0)>>1)) + 1
+	b := make([]byte, 8)
+	binary.BigEndian.PutUint64(b, large)
+	copy(crypted[offset:], b)
+
+	_, err = Decrypt("pass", crypted)
+	assert.ErrorContains(t, err, "too large")
 }
