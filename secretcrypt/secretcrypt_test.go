@@ -17,7 +17,6 @@ func passthrough(t *testing.T, passphrase string, plaintext []byte) {
 }
 
 func TestEncryptDecryptDoesNotCorrupt(t *testing.T) {
-	rand.NewSource(0)
 	rSource := rand.NewSource(0)
 	r := rand.New(rSource)
 
