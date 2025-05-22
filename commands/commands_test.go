@@ -11,7 +11,7 @@ import (
 
 func checkedRemove(t *testing.T, fname string) {
 	err := os.Remove(fname)
-	assert.NoError(t, err, "removal of file %s filed: %v", fname, err)
+	assert.NoError(t, err, "removal of file %s failed: %v", fname, err)
 }
 
 func TestEncryptDecryptUpdate(t *testing.T) {
