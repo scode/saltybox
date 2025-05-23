@@ -1,5 +1,9 @@
 name: CI
-on: [push]
+on:
+  push:
+    branches:
+      - master
+  pull_request:
 jobs:
   build_go_1_24:
     name: go / 1.24 / build+test
