@@ -3,7 +3,7 @@ package commands
 import (
 	"fmt"
 	"os"
-	"path"
+	"path/filepath"
 
 	"github.com/scode/saltybox/preader"
 	"github.com/scode/saltybox/secretcrypt"
@@ -104,7 +104,7 @@ func Update(plainfile string, cryptfile string, pr preader.PassphraseReader) (er
 	// Encrypt contents into the target file using atomic semantics (write to tempfile, fsync()
 	// and rename). This guarantees that the resulting file will either be the old file or the new
 	// file, but never corrupt (assuming a correctly functioning filesystem I/O stack).
-	cryptDir, _ := path.Split(cryptfile)
+	cryptDir, _ := filepath.Split(cryptfile)
 
 	tmpfile, err := os.CreateTemp(cryptDir, "saltybox-update-tmp")
 	if err != nil {
