@@ -20,7 +20,7 @@ linters:
     # - revive
     - gocritic
     - bodyclose
-    # - unconvert
+    - unconvert
 
   exclusions:
     rules:
