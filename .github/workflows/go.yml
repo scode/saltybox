@@ -9,18 +9,13 @@ jobs:
     name: go / 1.24 / build+test
     runs-on: ubuntu-latest
     steps:
-    - name: setup go 1.24
-      uses: actions/setup-go@v1
-      with:
-        go-version: 1.24
-      id: go
-
     - name: checkout code
-      uses: actions/checkout@v1
+      uses: actions/checkout@v4
 
-    - name: go get
-      run: |
-        go get -v ./...
+    - name: setup go 1.24
+      uses: actions/setup-go@v5
+      with:
+        go-version: '1.24'
 
     - name: go build
       run: go build -v saltybox.go
@@ -32,24 +27,21 @@ jobs:
       run: tests/cmdline.sh
 
     - name: codecov
-      run: |
-        bash <(curl -s https://codecov.io/bash) -t ${{ secrets.CODECOV_REPO_TOKEN }}
+      uses: codecov/codecov-action@v4
+      with:
+        token: ${{ secrets.CODECOV_TOKEN }}
+        file: ./coverage.txt
   build_go_1_23:
     name: go / 1.23 / build+test
     runs-on: ubuntu-latest
     steps:
-    - name: setup go 1.23
-      uses: actions/setup-go@v1
-      with:
-        go-version: 1.23
-      id: go
-
     - name: checkout code
-      uses: actions/checkout@v1
+      uses: actions/checkout@v4
 
-    - name: go get
-      run: |
-        go get -v ./...
+    - name: setup go 1.23
+      uses: actions/setup-go@v5
+      with:
+        go-version: '1.23'
 
     - name: go build
       run: go build -v saltybox.go
@@ -63,18 +55,13 @@ jobs:
     name: go / 1.22 / build+test
     runs-on: ubuntu-latest
     steps:
-    - name: setup go 1.22
-      uses: actions/setup-go@v1
-      with:
-        go-version: 1.22
-      id: go
-
     - name: checkout code
-      uses: actions/checkout@v1
+      uses: actions/checkout@v4
 
-    - name: go get
-      run: |
-        go get -v ./...
+    - name: setup go 1.22
+      uses: actions/setup-go@v5
+      with:
+        go-version: '1.22'
 
     - name: go build
       run: go build -v saltybox.go
@@ -88,49 +75,19 @@ jobs:
     name: go / 1.21 / build+test
     runs-on: ubuntu-latest
     steps:
-    - name: setup go 1.21
-      uses: actions/setup-go@v1
-      with:
-        go-version: 1.21
-      id: go
-
     - name: checkout code
-      uses: actions/checkout@v1
+      uses: actions/checkout@v4
 
-    - name: go get
-      run: |
-        go get -v ./...
+    - name: setup go 1.21
+      uses: actions/setup-go@v5
+      with:
+        go-version: '1.21'
 
     - name: go build
       run: go build -v saltybox.go
 
     - name: go test
       run: go test -race -coverprofile=coverage.txt -covermode=atomic -v ./...
-
-    - name: cmdline tests
-      run: tests/cmdline.sh
-  build_go_1_20:
-    name: go / 1.20 / build+test
-    runs-on: ubuntu-latest
-    steps:
-    - name: setup go 1.20
-      uses: actions/setup-go@v1
-      with:
-        go-version: 1.20
-      id: go
-
-    - name: checkout code
-      uses: actions/checkout@v1
-
-    - name: go get
-      run: |
-        go get -v ./...
-
-    - name: go build
-      run: go build -v saltybox.go
-
-    - name: go test
-      run: go test -v ./...
 
     - name: cmdline tests
       run: tests/cmdline.sh
