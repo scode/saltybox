@@ -33,7 +33,7 @@ const (
 )
 
 func genKey(passphrase string, salt []byte) (*[keyLen]byte, error) {
-	secretKey, err := scrypt.Key([]byte(passphrase), salt[:], scryptN, scryptR, scryptP, keyLen)
+	secretKey, err := scrypt.Key([]byte(passphrase), salt, scryptN, scryptR, scryptP, keyLen)
 	if err != nil {
 		return nil, err
 	}

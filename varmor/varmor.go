@@ -36,17 +36,17 @@ func Unwrap(varmoredBody string) ([]byte, error) {
 		return nil, errors.New("input size smaller than magic marker; likely truncated")
 	}
 
-	if strings.HasPrefix(varmoredBody, v1Magic) {
+	switch {
+	case strings.HasPrefix(varmoredBody, v1Magic):
 		armoredBody := strings.TrimPrefix(varmoredBody, v1Magic)
 		body, err := base64.RawURLEncoding.DecodeString(armoredBody)
 		if err != nil {
 			return nil, fmt.Errorf("base64 decoding failed: %s", err)
 		}
-
 		return body, nil
-	} else if strings.HasPrefix(varmoredBody, magicPrefix) {
+	case strings.HasPrefix(varmoredBody, magicPrefix):
 		return nil, errors.New("input claims to be saltybox, but not a version we support")
-	} else {
+	default:
 		return nil, errors.New("input unrecognized as saltybox data")
 	}
 }

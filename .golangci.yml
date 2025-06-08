@@ -18,7 +18,7 @@ linters:
     - unparam
     - gocyclo
     # - revive
-    # - gocritic
+    - gocritic
     - bodyclose
     # - unconvert
 
