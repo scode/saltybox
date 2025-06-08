@@ -61,7 +61,7 @@ func main() {
 						Destination: &outputArg,
 					},
 				},
-				Action: func(ctx context.Context, cmd *cli.Command) error {
+				Action: func(_ context.Context, _ *cli.Command) error {
 					return commands.Encrypt(inputArg, outputArg, getPassphraseReader())
 				},
 			},
@@ -89,7 +89,7 @@ func main() {
 						Destination: &outputArg,
 					},
 				},
-				Action: func(ctx context.Context, cmd *cli.Command) error {
+				Action: func(_ context.Context, _ *cli.Command) error {
 					return commands.Decrypt(inputArg, outputArg, getPassphraseReader())
 				},
 			},
@@ -121,12 +121,12 @@ func main() {
 						Destination: &outputArg,
 					},
 				},
-				Action: func(ctx context.Context, cmd *cli.Command) error {
+				Action: func(_ context.Context, _ *cli.Command) error {
 					return commands.Update(inputArg, outputArg, getPassphraseReader())
 				},
 			},
 		},
-		Action: func(ctx context.Context, cmd *cli.Command) error {
+		Action: func(_ context.Context, _ *cli.Command) error {
 			return errors.New("command is required; use help to see list of commands")
 		},
 	}

@@ -18,7 +18,7 @@ func TestReaderReaderSuccess(t *testing.T) {
 
 type erroringReader struct{}
 
-func (r *erroringReader) Read(p []byte) (n int, err error) {
+func (r *erroringReader) Read(_ []byte) (n int, err error) {
 	return 0, errors.New("mock reader error")
 }
 

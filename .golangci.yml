@@ -17,7 +17,7 @@ linters:
     - misspell
     - unparam
     - gocyclo
-    # - revive
+    - revive
     - gocritic
     - bodyclose
     - unconvert
@@ -33,6 +33,13 @@ linters:
       - text: "G304"
         linters:
           - gosec
+      # Ignore documentation complaints from revive
+      - text: "package-comments: should have a package comment"
+        linters:
+          - revive
+      - text: "exported: exported .* should have comment or be unexported"
+        linters:
+          - revive
 
 formatters:
   enable:
