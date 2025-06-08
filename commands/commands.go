@@ -16,9 +16,9 @@ func encryptBytes(passphrase string, plaintext []byte) (string, error) {
 		return "", fmt.Errorf("encryption failed: %s", err)
 	}
 
-	varmoredBytes := varmor.Wrap(cipherBytes)
+	varmoredString := varmor.Wrap(cipherBytes)
 
-	return string(varmoredBytes), nil
+	return varmoredString, nil
 }
 
 func Encrypt(inpath string, outpath string, preader preader.PassphraseReader) error {
