@@ -1,33 +1,40 @@
 version: "2"
+
+run:
+  timeout: 5m
+  tests: true
+  build-tags:
+    - integration
+
 linters:
   enable:
+    - errcheck
+    - govet
+    - ineffassign
+    - staticcheck
+    - unused
     - gosec
     - misspell
-    - staticcheck
     - unparam
+    - gocyclo
+    # - revive
+    # - gocritic
+    - bodyclose
+    # - unconvert
+
   exclusions:
-    generated: lax
-    presets:
-      - comments
-      - common-false-positives
-      - legacy
-      - std-error-handling
     rules:
-      - path: (.+)\.go$
-        text: G404
-      - path: (.+)\.go$
-        text: G304
-    paths:
-      - third_party$
-      - builtin$
-      - examples$
+      # Ignore G404 in test files - using math/rand for test data generation is acceptable
+      - path: "_test\\.go"
+        text: "Use of weak random number generator"
+        linters:
+          - gosec
+      # Ignore G304 (file inclusion) - this is the core functionality of the tool
+      - text: "G304"
+        linters:
+          - gosec
+
 formatters:
   enable:
     - gofmt
     - goimports
-  exclusions:
-    generated: lax
-    paths:
-      - third_party$
-      - builtin$
-      - examples$
