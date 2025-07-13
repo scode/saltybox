@@ -66,3 +66,24 @@ func TestDecryptTooLargeLength(t *testing.T) {
 	_, err = Decrypt("pass", crypted)
 	assert.ErrorContains(t, err, "too large")
 }
+
+func TestDecryptWithTrailingJunk(t *testing.T) {
+	plaintext := []byte("test message")
+	crypted, err := Encrypt("testpass", plaintext)
+	assert.NoError(t, err)
+
+	// Append junk data to the encrypted message
+	junkData := []byte("this is junk that should not be ignored")
+	cryptedWithJunk := make([]byte, len(crypted)+len(junkData))
+	copy(cryptedWithJunk, crypted)
+	copy(cryptedWithJunk[len(crypted):], junkData)
+
+	// Decryption should fail due to trailing junk
+	_, err = Decrypt("testpass", cryptedWithJunk)
+	assert.ErrorContains(t, err, "unexpected data after sealed box")
+
+	// Verify that original (without junk) still works
+	decrypted, err := Decrypt("testpass", crypted)
+	assert.NoError(t, err)
+	assert.Equal(t, plaintext, decrypted)
+}
