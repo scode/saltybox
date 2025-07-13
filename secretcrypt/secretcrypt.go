@@ -152,6 +152,11 @@ func Decrypt(passphrase string, crypttext []byte) ([]byte, error) {
 		return nil, fmt.Errorf("ReadFull() succeeded yet byte count was not as expected: %v", n)
 	}
 
+	// Verify that input ends exactly after the sealed box (no trailing junk)
+	if cryptReader.Len() > 0 {
+		return nil, errors.New("invalid input: unexpected data after sealed box")
+	}
+
 	secretKey, err := genKey(passphrase, salt[:])
 	if err != nil {
 		return nil, err
