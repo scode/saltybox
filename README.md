@@ -12,6 +12,9 @@
   - [Keep a copy of saltybox](#keep-a-copy-of-saltybox)
 - [Format/API contract](#formatapi-contract)
 - [Important crypto disclaimer](#important-crypto-disclaimer)
+- [Details: Encrypted File Format (saltybox format version 1)](#details-encrypted-file-format-saltybox-format-version-1)
+  - [Armored (Text) Format](#armored-text-format)
+  - [Binary Format](#binary-format)
 
 <!-- END doctoc generated TOC please keep comment here to allow auto update -->
 
@@ -64,8 +67,7 @@ ensures the passphrase is not accidentally changed:
 # Features and limitations
 
 * Files must fit comfortably in memory and there is no support for encrypting a stream in an incremental fashion.
-* There is no attempt to lock the passphrase or derived key into memory. The passphrase may be paged to disk by
-  the operating system. You are responsible for the security of the device on which you run this program.
+* There is no attempt to lock the passphrase or derived key into memory. The passphrase may be paged to disk by the operating system. You are responsible for the security of the device on which you run this program.
 * The format is based upon well known algorithms with exceedingly
   simple layering on top. scrypt is used for key stretching, nacl is
   used for encryption, and a base64 variant is used for encoding.
@@ -120,3 +122,40 @@ when composed into a larger program.
 Unfortunately, I have not been able to find a tool like this that
 satisfies my personal criteria for what I want to depend on for
 emergency life recovery media.
+
+# Details: Encrypted File Format (saltybox format version 1)
+
+Saltybox encrypts files using a passphrase-based encryption scheme. The output is a text file
+containing an armored (ASCII text) string that represents the encrypted data. This section
+documents the format.
+
+## Armored (Text) Format
+
+- The contents of the file starts with the string `saltybox1:` which identifies the format.
+- This is followed by a base64 encoded (RFC 4648, no padding) payload whose format is described below ("binary format").
+- Example: `saltybox1:RF0qX8mpCMXVBq6zxHfamdiT64s6Pwvb99Qj9gV61sMAAAAAAAAAFE6RVTWMhBCMJGL0MmgdDUBHoJaW`
+  - The `1` in the prefix indicates the format version. Future versions would use a different version
+    number (e.g., `saltybox2:`).
+
+## Binary Format
+
+The binary format contains the following, in order:
+
+  1. **Salt** (8 bytes): Random salt used for key derivation.
+  2. **Nonce** (24 bytes): Random nonce for the NaCl secretbox encryption.
+  3. **Length** (8 bytes): Big-endian encoded signed 64-bit integer (int64) indicating the
+    number of bytes in the sealed box that follows. This value must be non-negative and must
+    not exceed the remaining length of the input data after the salt, nonce, and length fields.
+    During decryption, invalid lengths (negative, too large, or causing truncation) are
+    rejected as format errors.
+  4. **Sealed Box** (variable length, as specified by the length field): The encrypted payload,
+     sealed using NaCl's `secretbox` (XSalsa20 stream cipher with Poly1305 MAC). The sealed box
+     contains the user's plaintext exactly - without any padding or additional metadata.
+
+The encryption key is derived from the user-provided passphrase and the salt using scrypt
+with parameters:
+
+  - N = 32768
+  - r = 8
+  - p = 1
+  - Key length = 32 bytes
