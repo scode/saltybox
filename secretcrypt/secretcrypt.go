@@ -53,7 +53,7 @@ func Encrypt(passphrase string, plaintext []byte) ([]byte, error) {
 	var salt [saltLen]byte
 	n, err := rand.Read(salt[:])
 	if err != nil {
-		return nil, fmt.Errorf("rand.Read() should never fail, but did: %v", err)
+		return nil, fmt.Errorf("rand.Read() should never fail, but did: %w", err)
 	}
 	if n != len(salt) {
 		return nil, fmt.Errorf("rand.Read() should always return the requested length, but did not: %v", n)
@@ -67,7 +67,7 @@ func Encrypt(passphrase string, plaintext []byte) ([]byte, error) {
 	var nonce [secretboxNonceLen]byte
 	n, err = rand.Read(nonce[:])
 	if err != nil {
-		return nil, fmt.Errorf("rand.Read() should never fail, but did: %v", err)
+		return nil, fmt.Errorf("rand.Read() should never fail, but did: %w", err)
 	}
 	if n != len(nonce) {
 		return nil, fmt.Errorf("rand.Read() should always return the requested length, but did not: %v", n)
@@ -82,16 +82,16 @@ func Encrypt(passphrase string, plaintext []byte) ([]byte, error) {
 
 	var buf bytes.Buffer
 	if _, err = buf.Write(salt[:]); err != nil {
-		return nil, fmt.Errorf("infallible Write() failed: %v", err)
+		return nil, fmt.Errorf("infallible Write() failed: %w", err)
 	}
 	if _, err = buf.Write(nonce[:]); err != nil {
-		return nil, fmt.Errorf("infallible Write() failed: %v", err)
+		return nil, fmt.Errorf("infallible Write() failed: %w", err)
 	}
 	if err = binary.Write(&buf, binary.BigEndian, int64(len(sealedBox))); err != nil {
-		return nil, fmt.Errorf("infallible Write() failed: %v", err)
+		return nil, fmt.Errorf("infallible Write() failed: %w", err)
 	}
 	if _, err = buf.Write(sealedBox); err != nil {
-		return nil, fmt.Errorf("infallible Write() failed: %v", err)
+		return nil, fmt.Errorf("infallible Write() failed: %w", err)
 	}
 
 	return buf.Bytes(), nil
@@ -113,7 +113,7 @@ func Decrypt(passphrase string, crypttext []byte) ([]byte, error) {
 	var salt [saltLen]byte
 	n, err := io.ReadFull(cryptReader, salt[:])
 	if err != nil {
-		return nil, fmt.Errorf("input likely truncated while reading salt: %v", err)
+		return nil, fmt.Errorf("input likely truncated while reading salt: %w", err)
 	}
 	if n != len(salt) {
 		return nil, fmt.Errorf("ReadFull() succeeded yet byte count was not as expected: %v", n)
@@ -122,7 +122,7 @@ func Decrypt(passphrase string, crypttext []byte) ([]byte, error) {
 	var nonce [secretboxNonceLen]byte
 	n, err = io.ReadFull(cryptReader, nonce[:])
 	if err != nil {
-		return nil, fmt.Errorf("input likely truncated while reading nonce: %v", err)
+		return nil, fmt.Errorf("input likely truncated while reading nonce: %w", err)
 	}
 	if n != len(nonce) {
 		return nil, fmt.Errorf("ReadFull() succeeded yet byte count was not as expected: %v", n)
@@ -130,7 +130,7 @@ func Decrypt(passphrase string, crypttext []byte) ([]byte, error) {
 
 	var sealedBoxLen int64
 	if err = binary.Read(cryptReader, binary.BigEndian, &sealedBoxLen); err != nil {
-		return nil, fmt.Errorf("input likely truncated while reading sealed box: %v", err)
+		return nil, fmt.Errorf("input likely truncated while reading sealed box: %w", err)
 	}
 	if sealedBoxLen < 0 {
 		return nil, errors.New("negative sealed box length")
