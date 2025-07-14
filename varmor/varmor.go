@@ -41,7 +41,7 @@ func Unwrap(varmoredBody string) ([]byte, error) {
 		armoredBody := strings.TrimPrefix(varmoredBody, v1Magic)
 		body, err := base64.RawURLEncoding.DecodeString(armoredBody)
 		if err != nil {
-			return nil, fmt.Errorf("base64 decoding failed: %s", err)
+			return nil, fmt.Errorf("base64 decoding failed: %w", err)
 		}
 		return body, nil
 	case strings.HasPrefix(varmoredBody, magicPrefix):
