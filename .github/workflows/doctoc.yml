@@ -1,0 +1,23 @@
+name: doctoc
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@v4
+    - name: Set up Node.js
+      uses: actions/setup-node@v4
+      with:
+        node-version: '20'
+    - name: Install doctoc
+      run: npm install -g doctoc
+    - name: Run doctoc on README
+      run: doctoc README.md
+    - name: Verify no changes
+      run: git diff --exit-code README.md
