@@ -51,7 +51,7 @@ func (r *terminalPassphraseReader) ReadPassphrase() (string, error) {
 	}
 	phrase, err := term.ReadPassword(fd)
 	if err != nil {
-		return "", fmt.Errorf("failure reading passphrase: %s", err)
+		return "", fmt.Errorf("failure reading passphrase: %w", err)
 	}
 
 	return string(phrase), nil
@@ -87,7 +87,7 @@ type readerPassphraseReader struct {
 func (r *readerPassphraseReader) ReadPassphrase() (string, error) {
 	data, err := io.ReadAll(r.reader)
 	if err != nil {
-		return "", fmt.Errorf("error reading passphrase: %v", err)
+		return "", fmt.Errorf("error reading passphrase: %w", err)
 	}
 
 	return string(data), nil

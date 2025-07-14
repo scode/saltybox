@@ -13,7 +13,7 @@ import (
 func encryptBytes(passphrase string, plaintext []byte) (string, error) {
 	cipherBytes, err := secretcrypt.Encrypt(passphrase, plaintext)
 	if err != nil {
-		return "", fmt.Errorf("encryption failed: %s", err)
+		return "", fmt.Errorf("encryption failed: %w", err)
 	}
 
 	varmoredString := varmor.Wrap(cipherBytes)
@@ -24,7 +24,7 @@ func encryptBytes(passphrase string, plaintext []byte) (string, error) {
 func Encrypt(inpath string, outpath string, preader preader.PassphraseReader) error {
 	plaintext, err := os.ReadFile(inpath)
 	if err != nil {
-		return fmt.Errorf("failed to read from %s: %s", inpath, err)
+		return fmt.Errorf("failed to read from %s: %w", inpath, err)
 	}
 
 	passphrase, err := preader.ReadPassphrase()
@@ -33,12 +33,12 @@ func Encrypt(inpath string, outpath string, preader preader.PassphraseReader) er
 	}
 	encryptedString, err := encryptBytes(passphrase, plaintext)
 	if err != nil {
-		return fmt.Errorf("encryption failed: %s", err)
+		return fmt.Errorf("encryption failed: %w", err)
 	}
 
 	err = os.WriteFile(outpath, []byte(encryptedString), 0600)
 	if err != nil {
-		return fmt.Errorf("failed to write to %s: %s", outpath, err)
+		return fmt.Errorf("failed to write to %s: %w", outpath, err)
 	}
 
 	return nil
@@ -47,12 +47,12 @@ func Encrypt(inpath string, outpath string, preader preader.PassphraseReader) er
 func decryptString(passphrase string, encryptedString string) ([]byte, error) {
 	cipherBytes, err := varmor.Unwrap(encryptedString)
 	if err != nil {
-		return nil, fmt.Errorf("failed to unarmor: %s", err)
+		return nil, fmt.Errorf("failed to unarmor: %w", err)
 	}
 
 	plaintext, err := secretcrypt.Decrypt(passphrase, cipherBytes)
 	if err != nil {
-		return nil, fmt.Errorf("failed to decrypt: %s", err)
+		return nil, fmt.Errorf("failed to decrypt: %w", err)
 	}
 
 	return plaintext, nil
@@ -61,7 +61,7 @@ func decryptString(passphrase string, encryptedString string) ([]byte, error) {
 func Decrypt(inpath string, outpath string, preader preader.PassphraseReader) error {
 	varmoredBytes, err := os.ReadFile(inpath)
 	if err != nil {
-		return fmt.Errorf("failed to read from %s: %s", inpath, err)
+		return fmt.Errorf("failed to read from %s: %w", inpath, err)
 	}
 
 	passphrase, err := preader.ReadPassphrase()
@@ -70,12 +70,12 @@ func Decrypt(inpath string, outpath string, preader preader.PassphraseReader) er
 	}
 	plaintext, err := decryptString(passphrase, string(varmoredBytes))
 	if err != nil {
-		return fmt.Errorf("failed to decrypt: %s", err)
+		return fmt.Errorf("failed to decrypt: %w", err)
 	}
 
 	err = os.WriteFile(outpath, plaintext, 0600)
 	if err != nil {
-		return fmt.Errorf("failed to write to %s: %s", outpath, err)
+		return fmt.Errorf("failed to write to %s: %w", outpath, err)
 	}
 
 	return nil
@@ -87,7 +87,7 @@ func Update(plainfile string, cryptfile string, pr preader.PassphraseReader) (er
 	// text).
 	varmoredBytes, err := os.ReadFile(cryptfile)
 	if err != nil {
-		return fmt.Errorf("failed to read from %s: %s", cryptfile, err)
+		return fmt.Errorf("failed to read from %s: %w", cryptfile, err)
 	}
 
 	cachingPreader := preader.NewCaching(pr)
@@ -98,7 +98,7 @@ func Update(plainfile string, cryptfile string, pr preader.PassphraseReader) (er
 	}
 	_, err = decryptString(passphrase, string(varmoredBytes))
 	if err != nil {
-		return fmt.Errorf("failed to decrypt: %s", err)
+		return fmt.Errorf("failed to decrypt: %w", err)
 	}
 
 	// Encrypt contents into the target file using atomic semantics (write to tempfile, fsync()
@@ -108,7 +108,7 @@ func Update(plainfile string, cryptfile string, pr preader.PassphraseReader) (er
 
 	tmpfile, err := os.CreateTemp(cryptDir, "saltybox-update-tmp")
 	if err != nil {
-		return fmt.Errorf("failed to create tempfile: %s", err)
+		return fmt.Errorf("failed to create tempfile: %w", err)
 	}
 	defer func(fname string) {
 		if _, localErr := os.Stat(fname); !os.IsNotExist(localErr) {
@@ -121,7 +121,7 @@ func Update(plainfile string, cryptfile string, pr preader.PassphraseReader) (er
 
 	err = Encrypt(plainfile, tmpfile.Name(), cachingPreader)
 	if err != nil {
-		return fmt.Errorf("failed to encrypt: %s", err)
+		return fmt.Errorf("failed to encrypt: %w", err)
 	}
 
 	// Re-open the file to ensure that we are Sync():ing the correct file. Technically this is not
@@ -129,7 +129,7 @@ func Update(plainfile string, cryptfile string, pr preader.PassphraseReader) (er
 	// However, let's defensively avoid relying on that subtle behavior and re-open the file.
 	reopenedTmpFile, err := os.Open(tmpfile.Name())
 	if err != nil {
-		return fmt.Errorf("failed to re-open tempfile after encryption: %s", err)
+		return fmt.Errorf("failed to re-open tempfile after encryption: %w", err)
 	}
 	defer func(f *os.File) {
 		err = f.Close()
@@ -137,12 +137,12 @@ func Update(plainfile string, cryptfile string, pr preader.PassphraseReader) (er
 
 	err = reopenedTmpFile.Sync()
 	if err != nil {
-		return fmt.Errorf("failed to sync file prior to rename: %s", err)
+		return fmt.Errorf("failed to sync file prior to rename: %w", err)
 	}
 
 	err = os.Rename(reopenedTmpFile.Name(), cryptfile)
 	if err != nil {
-		return fmt.Errorf("failed to rename to target file: %s", err)
+		return fmt.Errorf("failed to rename to target file: %w", err)
 	}
 
 	return nil
