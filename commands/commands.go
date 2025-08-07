@@ -105,6 +105,9 @@ func Update(plainfile string, cryptfile string, pr preader.PassphraseReader) (er
 	// and rename). This guarantees that the resulting file will either be the old file or the new
 	// file, but never corrupt (assuming a correctly functioning filesystem I/O stack).
 	cryptDir, _ := filepath.Split(cryptfile)
+	if cryptDir == "" {
+		cryptDir = "."
+	}
 
 	tmpfile, err := os.CreateTemp(cryptDir, "saltybox-update-tmp")
 	if err != nil {
@@ -112,11 +115,11 @@ func Update(plainfile string, cryptfile string, pr preader.PassphraseReader) (er
 	}
 	defer func(fname string) {
 		if _, localErr := os.Stat(fname); !os.IsNotExist(localErr) {
-			err = os.Remove(fname)
+			_ = os.Remove(fname)
 		}
 	}(tmpfile.Name())
 	defer func(tmpfile *os.File) {
-		err = tmpfile.Close()
+		_ = tmpfile.Close()
 	}(tmpfile)
 
 	err = Encrypt(plainfile, tmpfile.Name(), cachingPreader)
@@ -132,7 +135,7 @@ func Update(plainfile string, cryptfile string, pr preader.PassphraseReader) (er
 		return fmt.Errorf("failed to re-open tempfile after encryption: %w", err)
 	}
 	defer func(f *os.File) {
-		err = f.Close()
+		_ = f.Close()
 	}(reopenedTmpFile)
 
 	err = reopenedTmpFile.Sync()

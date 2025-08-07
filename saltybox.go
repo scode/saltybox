@@ -102,7 +102,7 @@ func main() {
 
    If the output file does not already exist, or if it does not appear to be a valid saltybox file, the operation will fail.
 
-   If the passphrase provided by the user does unlock the existing file, the operation will fail. By using the update command,
+   If the passphrase provided by the user does not unlock the existing file, the operation will fail. By using the update command,
    the user thereby avoids accidentally changing the passphrase as would be possible if using the encrypt command and separately
    replacing the target file.`,
 				Flags: []cli.Flag{

@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"strings"
 
 	"golang.org/x/term"
 )
@@ -90,5 +91,5 @@ func (r *readerPassphraseReader) ReadPassphrase() (string, error) {
 		return "", fmt.Errorf("error reading passphrase: %w", err)
 	}
 
-	return string(data), nil
+	return strings.TrimRight(string(data), "\r\n"), nil
 }

@@ -139,7 +139,9 @@ func Decrypt(passphrase string, crypttext []byte) ([]byte, error) {
 	if sealedBoxLen > int64(maxInt) {
 		return nil, errors.New("sealed box length exceeds max int")
 	}
-	if sealedBoxLen > int64(len(crypttext)) {
+	// Ensure the declared sealed box length does not exceed the remaining bytes in the input
+	remaining := cryptReader.Len()
+	if sealedBoxLen > int64(remaining) {
 		return nil, errors.New("truncated or corrupt input; claimed length greater than available input")
 	}
 
