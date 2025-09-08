@@ -1,0 +1,12 @@
+/workspace/saltybox-rs/target/debug/deps/libcipher-c0f1a83dd3ddb7d2.rmeta: /usr/local/cargo/registry/src/index.crates.io-6f17d22bba15001f/cipher-0.4.4/src/lib.rs /usr/local/cargo/registry/src/index.crates.io-6f17d22bba15001f/cipher-0.4.4/src/block.rs /usr/local/cargo/registry/src/index.crates.io-6f17d22bba15001f/cipher-0.4.4/src/errors.rs /usr/local/cargo/registry/src/index.crates.io-6f17d22bba15001f/cipher-0.4.4/src/stream.rs /usr/local/cargo/registry/src/index.crates.io-6f17d22bba15001f/cipher-0.4.4/src/stream_core.rs /usr/local/cargo/registry/src/index.crates.io-6f17d22bba15001f/cipher-0.4.4/src/stream_wrapper.rs
+
+/workspace/saltybox-rs/target/debug/deps/libcipher-c0f1a83dd3ddb7d2.rlib: /usr/local/cargo/registry/src/index.crates.io-6f17d22bba15001f/cipher-0.4.4/src/lib.rs /usr/local/cargo/registry/src/index.crates.io-6f17d22bba15001f/cipher-0.4.4/src/block.rs /usr/local/cargo/registry/src/index.crates.io-6f17d22bba15001f/cipher-0.4.4/src/errors.rs /usr/local/cargo/registry/src/index.crates.io-6f17d22bba15001f/cipher-0.4.4/src/stream.rs /usr/local/cargo/registry/src/index.crates.io-6f17d22bba15001f/cipher-0.4.4/src/stream_core.rs /usr/local/cargo/registry/src/index.crates.io-6f17d22bba15001f/cipher-0.4.4/src/stream_wrapper.rs
+
+/workspace/saltybox-rs/target/debug/deps/cipher-c0f1a83dd3ddb7d2.d: /usr/local/cargo/registry/src/index.crates.io-6f17d22bba15001f/cipher-0.4.4/src/lib.rs /usr/local/cargo/registry/src/index.crates.io-6f17d22bba15001f/cipher-0.4.4/src/block.rs /usr/local/cargo/registry/src/index.crates.io-6f17d22bba15001f/cipher-0.4.4/src/errors.rs /usr/local/cargo/registry/src/index.crates.io-6f17d22bba15001f/cipher-0.4.4/src/stream.rs /usr/local/cargo/registry/src/index.crates.io-6f17d22bba15001f/cipher-0.4.4/src/stream_core.rs /usr/local/cargo/registry/src/index.crates.io-6f17d22bba15001f/cipher-0.4.4/src/stream_wrapper.rs
+
+/usr/local/cargo/registry/src/index.crates.io-6f17d22bba15001f/cipher-0.4.4/src/lib.rs:
+/usr/local/cargo/registry/src/index.crates.io-6f17d22bba15001f/cipher-0.4.4/src/block.rs:
+/usr/local/cargo/registry/src/index.crates.io-6f17d22bba15001f/cipher-0.4.4/src/errors.rs:
+/usr/local/cargo/registry/src/index.crates.io-6f17d22bba15001f/cipher-0.4.4/src/stream.rs:
+/usr/local/cargo/registry/src/index.crates.io-6f17d22bba15001f/cipher-0.4.4/src/stream_core.rs:
+/usr/local/cargo/registry/src/index.crates.io-6f17d22bba15001f/cipher-0.4.4/src/stream_wrapper.rs:

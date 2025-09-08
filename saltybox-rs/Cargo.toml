@@ -1,0 +1,16 @@
+[package]
+name = "saltybox-rs"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+clap = { version = "4.5", features = ["derive"] }
+base64 = "0.22"
+anyhow = "1"
+thiserror = "1"
+rand = "0.8"
+scrypt = { version = "0.11", default-features = false }
+xsalsa20poly1305 = "0.9.1"
+zeroize = { version = "1", features = ["zeroize_derive"] }
+rpassword = "7"
+tempfile = "3"
