@@ -1,4 +1,4 @@
-THIS SHOULD BE A LINTER ERRORpackage main
+package main
 
 import (
 	"context"
