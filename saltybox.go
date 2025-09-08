@@ -1,4 +1,4 @@
-package main
+THIS SHOULD BE A LINTER ERRORpackage main
 
 import (
 	"context"
@@ -16,6 +16,9 @@ func main() {
 	var passphraseStdinArg bool
 	var inputArg string
 	var outputArg string
+	var genOutputArg string
+	var genRowsArg int
+	var genSeedArg int
 
 	getPassphraseReader := func() preader.PassphraseReader {
 		if passphraseStdinArg {
@@ -123,6 +126,41 @@ func main() {
 				},
 				Action: func(_ context.Context, _ *cli.Command) error {
 					return commands.Update(inputArg, outputArg, getPassphraseReader())
+				},
+			},
+			{
+				Name:    "genvectors",
+				Aliases: []string{"g"},
+				Usage:   "Generate CSV test vectors (passphrase, plaintext, ciphertext)",
+				Description: `Generates a CSV file with many test cases that exercise edge cases.
+
+	  The CSV columns are: passphrase, plaintext, ciphertext.
+	  Plaintext and ciphertext are both armored using saltybox varmor to ensure text safety.
+	  The generator reuses the project's encryption and armoring primitives.`,
+				Flags: []cli.Flag{
+					&cli.StringFlag{
+						Name:        "output",
+						Aliases:     []string{"o"},
+						Usage:       "Path to the CSV file to write",
+						Required:    true,
+						Destination: &genOutputArg,
+					},
+					&cli.IntFlag{
+						Name:        "rows",
+						Aliases:     []string{"r"},
+						Usage:       "Maximum number of rows to generate (default 5000)",
+						Value:       5000,
+						Destination: &genRowsArg,
+					},
+					&cli.IntFlag{
+						Name:        "seed",
+						Usage:       "Seed for deterministic selection of inputs (not ciphertext)",
+						Value:       1,
+						Destination: &genSeedArg,
+					},
+				},
+				Action: func(_ context.Context, _ *cli.Command) error {
+					return commands.GenerateVectors(genOutputArg, genRowsArg, int64(genSeedArg))
 				},
 			},
 		},
