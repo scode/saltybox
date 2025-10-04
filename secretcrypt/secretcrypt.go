@@ -59,11 +59,6 @@ func Encrypt(passphrase string, plaintext []byte) ([]byte, error) {
 		return nil, fmt.Errorf("rand.Read() should always return the requested length, but did not: %v", n)
 	}
 
-	secretKey, err := genKey(passphrase, salt[:])
-	if err != nil {
-		return nil, err
-	}
-
 	var nonce [secretboxNonceLen]byte
 	n, err = rand.Read(nonce[:])
 	if err != nil {
@@ -73,10 +68,26 @@ func Encrypt(passphrase string, plaintext []byte) ([]byte, error) {
 		return nil, fmt.Errorf("rand.Read() should always return the requested length, but did not: %v", n)
 	}
 
+	return EncryptDeterministically(passphrase, plaintext, &salt, &nonce)
+}
+
+// EncryptDeterministically encrypts bytes using a passphrase with the provided salt and nonce.
+//
+// This function is identical to Encrypt except that it takes the salt and nonce as arguments
+// instead of generating them randomly. This is ONLY intended for testing purposes and should
+// never be used in production.
+//
+// Returns encrypted bytes and an error, if any.
+func EncryptDeterministically(passphrase string, plaintext []byte, salt *[saltLen]byte, nonce *[secretboxNonceLen]byte) ([]byte, error) {
+	secretKey, err := genKey(passphrase, salt[:])
+	if err != nil {
+		return nil, err
+	}
+
 	sealedBox := secretbox.Seal(
 		nil,
 		plaintext,
-		&nonce,
+		nonce,
 		secretKey,
 	)
 
