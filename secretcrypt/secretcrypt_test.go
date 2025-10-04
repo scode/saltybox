@@ -87,3 +87,46 @@ func TestDecryptWithTrailingJunk(t *testing.T) {
 	assert.NoError(t, err)
 	assert.Equal(t, plaintext, decrypted)
 }
+
+func TestEncryptDeterministically(t *testing.T) {
+	passphrase := "testpass"
+	plaintext := []byte("test message for deterministic encryption")
+
+	var salt [saltLen]byte
+	for i := range salt {
+		salt[i] = byte(i)
+	}
+
+	var nonce [secretboxNonceLen]byte
+	for i := range nonce {
+		nonce[i] = byte(i * 2)
+	}
+
+	// Encrypt with deterministic function
+	crypted1, err := EncryptDeterministically(passphrase, plaintext, &salt, &nonce)
+	assert.NoError(t, err)
+
+	// Encrypt again with same salt and nonce - should produce identical output
+	crypted2, err := EncryptDeterministically(passphrase, plaintext, &salt, &nonce)
+	assert.NoError(t, err)
+	assert.Equal(t, crypted1, crypted2)
+
+	// Decrypt and verify
+	decrypted, err := Decrypt(passphrase, crypted1)
+	assert.NoError(t, err)
+	assert.Equal(t, plaintext, decrypted)
+
+	// Verify with different nonce produces different output
+	var nonce2 [secretboxNonceLen]byte
+	for i := range nonce2 {
+		nonce2[i] = byte(i * 3)
+	}
+	crypted3, err := EncryptDeterministically(passphrase, plaintext, &salt, &nonce2)
+	assert.NoError(t, err)
+	assert.NotEqual(t, crypted1, crypted3)
+
+	// But still decrypts correctly
+	decrypted3, err := Decrypt(passphrase, crypted3)
+	assert.NoError(t, err)
+	assert.Equal(t, plaintext, decrypted3)
+}
