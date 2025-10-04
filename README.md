@@ -133,7 +133,8 @@ documents the format.
 ## Armored (Text) Format
 
 - The contents of the file starts with the string `saltybox1:` which identifies the format.
-- This is followed by a base64 encoded (RFC 4648, no padding) payload whose format is described below ("binary format").
+- This is followed by a base64url encoded (RFC 4648 Section 5, no padding) payload whose format is described below ("binary format").
+  - Uses URL-safe base64 alphabet: `-` and `_` instead of `+` and `/`
 - Example: `saltybox1:RF0qX8mpCMXVBq6zxHfamdiT64s6Pwvb99Qj9gV61sMAAAAAAAAAFE6RVTWMhBCMJGL0MmgdDUBHoJaW`
   - The `1` in the prefix indicates the format version. Future versions would use a different version
     number (e.g., `saltybox2:`).
