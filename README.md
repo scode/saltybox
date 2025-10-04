@@ -15,6 +15,9 @@
 - [Details: Encrypted File Format (saltybox format version 1)](#details-encrypted-file-format-saltybox-format-version-1)
   - [Armored (Text) Format](#armored-text-format)
   - [Binary Format](#binary-format)
+- [Golden Test Vectors](#golden-test-vectors)
+  - [Usage](#usage-1)
+  - [Golden Vectors Format](#golden-vectors-format)
 
 <!-- END doctoc generated TOC please keep comment here to allow auto update -->
 
@@ -161,3 +164,41 @@ with parameters:
   - r = 8
   - p = 1
   - Key length = 32 bytes
+
+# Golden Test Vectors
+
+The `golden` tool (`go run ./golden`)generates comprehensive test vectors
+for purpose of correctness/compatibility testing
+
+## Usage
+
+Generate golden test vectors:
+
+```
+go run ./golden generate
+```
+
+This creates `testdata/golden-vectors.json` containing test cases
+that exercise edge cases and various aspects of the format.
+
+Validate against golden vectors:
+
+```
+go run ./golden validate
+```
+
+## Golden Vectors Format
+
+The `testdata/golden-vectors.json` file contains a JSON array of test vectors. Each vector is
+an object with these fields:
+
+- **plaintext**: Base64-encoded plaintext data to encrypt
+- **ciphertext**: Armored (text format) expected ciphertext (e.g., `saltybox1:...`)
+- **nonce**: Base64-encoded nonce used for encryption
+- **salt**: Base64-encoded salt used for encryption
+- **passphrase**: Base64-encoded passphrase used for encryption
+- **comment**: Human-readable description of what the test case exercises
+
+All binary data (including passphrases that may contain arbitrary bytes) is base64-encoded
+for safe JSON storage. The ciphertext is in the final armored text format that would be
+written to a file.

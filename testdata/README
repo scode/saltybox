@@ -1,1 +1,2 @@
 hello.txt.salty - encrypted with passphrase "test"
+golden-vectors.json - generated with golden/main.go
