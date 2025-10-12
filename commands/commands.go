@@ -112,11 +112,15 @@ func Update(plainfile string, cryptfile string, pr preader.PassphraseReader) (er
 	}
 	defer func(fname string) {
 		if _, localErr := os.Stat(fname); !os.IsNotExist(localErr) {
-			err = os.Remove(fname)
+			if removeErr := os.Remove(fname); removeErr != nil && err == nil {
+				err = removeErr
+			}
 		}
 	}(tmpfile.Name())
 	defer func(tmpfile *os.File) {
-		err = tmpfile.Close()
+		if closeErr := tmpfile.Close(); closeErr != nil && err == nil {
+			err = closeErr
+		}
 	}(tmpfile)
 
 	err = Encrypt(plainfile, tmpfile.Name(), cachingPreader)
@@ -132,7 +136,9 @@ func Update(plainfile string, cryptfile string, pr preader.PassphraseReader) (er
 		return fmt.Errorf("failed to re-open tempfile after encryption: %w", err)
 	}
 	defer func(f *os.File) {
-		err = f.Close()
+		if closeErr := f.Close(); closeErr != nil && err == nil {
+			err = closeErr
+		}
 	}(reopenedTmpFile)
 
 	err = reopenedTmpFile.Sync()
