@@ -6,7 +6,7 @@ toolchain go1.24.3
 
 require (
 	github.com/stretchr/testify v1.11.1
-	github.com/urfave/cli/v3 v3.4.1
+	github.com/urfave/cli/v3 v3.5.0
 	golang.org/x/crypto v0.43.0
 	golang.org/x/term v0.36.0
 )
