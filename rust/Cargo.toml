@@ -19,5 +19,8 @@ path = "src/bin/golden.rs"
 
 [dependencies]
 anyhow = "1.0"
+scrypt = "0.11"
+crypto_secretbox = "0.1"
+rand = "0.8"
 
 [dev-dependencies]
