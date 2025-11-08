@@ -37,7 +37,7 @@ const SCRYPT_R: u32 = 8;
 const SCRYPT_P: u32 = 1;
 
 /// Derive a 32-byte key from a passphrase and salt using scrypt
-fn derive_key(passphrase: &str, salt: &[u8; SALT_LEN]) -> Result<[u8; KEY_LEN]> {
+fn derive_key(passphrase: &[u8], salt: &[u8; SALT_LEN]) -> Result<[u8; KEY_LEN]> {
     let params = Params::new(
         (SCRYPT_N as f64).log2() as u8, // log_n
         SCRYPT_R,
@@ -47,8 +47,7 @@ fn derive_key(passphrase: &str, salt: &[u8; SALT_LEN]) -> Result<[u8; KEY_LEN]> 
     .context("failed to create scrypt params")?;
 
     let mut key = [0u8; KEY_LEN];
-    scrypt(passphrase.as_bytes(), salt, &params, &mut key)
-        .context("scrypt key derivation failed")?;
+    scrypt(passphrase, salt, &params, &mut key).context("scrypt key derivation failed")?;
 
     Ok(key)
 }
@@ -56,7 +55,7 @@ fn derive_key(passphrase: &str, salt: &[u8; SALT_LEN]) -> Result<[u8; KEY_LEN]> 
 /// Encrypt plaintext with a passphrase using random salt and nonce
 ///
 /// Returns the binary format: salt(8) + nonce(24) + length(8) + sealedbox(variable)
-pub fn encrypt(passphrase: &str, plaintext: &[u8]) -> Result<Vec<u8>> {
+pub fn encrypt(passphrase: &[u8], plaintext: &[u8]) -> Result<Vec<u8>> {
     let mut salt = [0u8; SALT_LEN];
     OsRng.fill_bytes(&mut salt);
 
@@ -71,7 +70,7 @@ pub fn encrypt(passphrase: &str, plaintext: &[u8]) -> Result<Vec<u8>> {
 /// This function is ONLY for testing purposes to generate deterministic output.
 /// NEVER use this in production - always use `encrypt()` which generates random salt/nonce.
 pub fn encrypt_deterministic(
-    passphrase: &str,
+    passphrase: &[u8],
     plaintext: &[u8],
     salt: &[u8; SALT_LEN],
     nonce: &[u8; NONCE_LEN],
@@ -97,7 +96,7 @@ pub fn encrypt_deterministic(
 }
 
 /// Decrypt ciphertext with a passphrase
-pub fn decrypt(passphrase: &str, ciphertext: &[u8]) -> Result<Vec<u8>> {
+pub fn decrypt(passphrase: &[u8], ciphertext: &[u8]) -> Result<Vec<u8>> {
     let mut pos = 0;
 
     if ciphertext.len() < pos + SALT_LEN {
@@ -170,8 +169,8 @@ mod tests {
         let passphrase = "test";
         let plaintext = b"";
 
-        let ciphertext = encrypt(passphrase, plaintext).unwrap();
-        let decrypted = decrypt(passphrase, &ciphertext).unwrap();
+        let ciphertext = encrypt(passphrase.as_bytes(), plaintext).unwrap();
+        let decrypted = decrypt(passphrase.as_bytes(), &ciphertext).unwrap();
 
         assert_eq!(plaintext, &decrypted[..]);
     }
@@ -181,8 +180,8 @@ mod tests {
         let passphrase = "test";
         let plaintext = b"hello";
 
-        let ciphertext = encrypt(passphrase, plaintext).unwrap();
-        let decrypted = decrypt(passphrase, &ciphertext).unwrap();
+        let ciphertext = encrypt(passphrase.as_bytes(), plaintext).unwrap();
+        let decrypted = decrypt(passphrase.as_bytes(), &ciphertext).unwrap();
 
         assert_eq!(plaintext, &decrypted[..]);
     }
@@ -194,15 +193,15 @@ mod tests {
         let salt = [1u8; SALT_LEN];
         let nonce = [2u8; NONCE_LEN];
 
-        let ct1 = encrypt_deterministic(passphrase, plaintext, &salt, &nonce).unwrap();
-        let ct2 = encrypt_deterministic(passphrase, plaintext, &salt, &nonce).unwrap();
+        let ct1 = encrypt_deterministic(passphrase.as_bytes(), plaintext, &salt, &nonce).unwrap();
+        let ct2 = encrypt_deterministic(passphrase.as_bytes(), plaintext, &salt, &nonce).unwrap();
 
         // Same salt/nonce produces identical ciphertext
         assert_eq!(ct1, ct2);
 
         // Both decrypt to same plaintext
-        let pt1 = decrypt(passphrase, &ct1).unwrap();
-        let pt2 = decrypt(passphrase, &ct2).unwrap();
+        let pt1 = decrypt(passphrase.as_bytes(), &ct1).unwrap();
+        let pt2 = decrypt(passphrase.as_bytes(), &ct2).unwrap();
         assert_eq!(plaintext, &pt1[..]);
         assert_eq!(plaintext, &pt2[..]);
     }
@@ -215,15 +214,15 @@ mod tests {
         let nonce1 = [2u8; NONCE_LEN];
         let nonce2 = [3u8; NONCE_LEN];
 
-        let ct1 = encrypt_deterministic(passphrase, plaintext, &salt, &nonce1).unwrap();
-        let ct2 = encrypt_deterministic(passphrase, plaintext, &salt, &nonce2).unwrap();
+        let ct1 = encrypt_deterministic(passphrase.as_bytes(), plaintext, &salt, &nonce1).unwrap();
+        let ct2 = encrypt_deterministic(passphrase.as_bytes(), plaintext, &salt, &nonce2).unwrap();
 
         // Different nonce produces different ciphertext
         assert_ne!(ct1, ct2);
 
         // Both decrypt to same plaintext
-        let pt1 = decrypt(passphrase, &ct1).unwrap();
-        let pt2 = decrypt(passphrase, &ct2).unwrap();
+        let pt1 = decrypt(passphrase.as_bytes(), &ct1).unwrap();
+        let pt2 = decrypt(passphrase.as_bytes(), &ct2).unwrap();
         assert_eq!(plaintext, &pt1[..]);
         assert_eq!(plaintext, &pt2[..]);
     }
@@ -232,8 +231,8 @@ mod tests {
     fn test_wrong_passphrase() {
         let plaintext = b"secret data";
 
-        let ciphertext = encrypt("correct", plaintext).unwrap();
-        let result = decrypt("wrong", &ciphertext);
+        let ciphertext = encrypt(b"correct", plaintext).unwrap();
+        let result = decrypt(b"wrong", &ciphertext);
 
         assert!(result.is_err());
         assert!(
@@ -247,7 +246,7 @@ mod tests {
     #[test]
     fn test_truncated_salt() {
         let ciphertext = vec![1, 2, 3]; // Less than SALT_LEN
-        let result = decrypt("test", &ciphertext);
+        let result = decrypt(b"test", &ciphertext);
 
         assert!(result.is_err());
         assert!(
@@ -261,7 +260,7 @@ mod tests {
     #[test]
     fn test_truncated_nonce() {
         let ciphertext = vec![0u8; SALT_LEN + 3]; // Incomplete nonce
-        let result = decrypt("test", &ciphertext);
+        let result = decrypt(b"test", &ciphertext);
 
         assert!(result.is_err());
         assert!(
@@ -275,7 +274,7 @@ mod tests {
     #[test]
     fn test_truncated_length() {
         let ciphertext = vec![0u8; SALT_LEN + NONCE_LEN + 3]; // Incomplete length
-        let result = decrypt("test", &ciphertext);
+        let result = decrypt(b"test", &ciphertext);
 
         assert!(result.is_err());
         assert!(
@@ -294,7 +293,7 @@ mod tests {
         ciphertext[SALT_LEN + NONCE_LEN..SALT_LEN + NONCE_LEN + 8]
             .copy_from_slice(&negative.to_be_bytes());
 
-        let result = decrypt("test", &ciphertext);
+        let result = decrypt(b"test", &ciphertext);
 
         assert!(result.is_err());
         assert!(
@@ -307,7 +306,7 @@ mod tests {
 
     #[test]
     fn test_length_exceeds_available() {
-        let passphrase = "test";
+        let passphrase = b"test";
         let plaintext = b"hello";
 
         let mut ciphertext = encrypt(passphrase, plaintext).unwrap();
@@ -329,7 +328,7 @@ mod tests {
 
     #[test]
     fn test_trailing_data() {
-        let passphrase = "test";
+        let passphrase = b"test";
         let plaintext = b"hello";
 
         let mut ciphertext = encrypt(passphrase, plaintext).unwrap();
@@ -349,7 +348,7 @@ mod tests {
 
     #[test]
     fn test_all_zero_bytes() {
-        let passphrase = "test";
+        let passphrase = b"test";
         let plaintext = vec![0u8; 100];
 
         let ciphertext = encrypt(passphrase, &plaintext).unwrap();
@@ -360,7 +359,7 @@ mod tests {
 
     #[test]
     fn test_all_ff_bytes() {
-        let passphrase = "test";
+        let passphrase = b"test";
         let plaintext = vec![0xFFu8; 100];
 
         let ciphertext = encrypt(passphrase, &plaintext).unwrap();
@@ -371,7 +370,7 @@ mod tests {
 
     #[test]
     fn test_all_byte_values() {
-        let passphrase = "test";
+        let passphrase = b"test";
         let plaintext: Vec<u8> = (0..=255).collect();
 
         let ciphertext = encrypt(passphrase, &plaintext).unwrap();
@@ -382,7 +381,7 @@ mod tests {
 
     #[test]
     fn test_large_plaintext() {
-        let passphrase = "test";
+        let passphrase = b"test";
         let plaintext = vec![0x42u8; 128 * 1024]; // 128KB
 
         let ciphertext = encrypt(passphrase, &plaintext).unwrap();
@@ -395,7 +394,7 @@ mod tests {
     fn test_cross_implementation_compatibility() {
         // This test uses the exact same parameters as the Go implementation's
         // TestCrossImplementationCompatibility to verify byte-for-byte compatibility
-        let passphrase = "test";
+        let passphrase = b"test";
         let plaintext = b"test payload";
 
         // Use same fixed salt and nonce as Go test
