@@ -130,3 +130,43 @@ func TestEncryptDeterministically(t *testing.T) {
 	assert.NoError(t, err)
 	assert.Equal(t, plaintext, decrypted3)
 }
+
+func TestCrossImplementationCompatibility(t *testing.T) {
+	// This test uses fixed salt/nonce to produce deterministic output
+	// for cross-implementation testing with Rust version. The same byte
+	// sequence is used in a corresponding Rust test.
+	passphrase := "test"
+	plaintext := []byte("test payload")
+
+	var salt [saltLen]byte
+	for i := range salt {
+		salt[i] = 0x42
+	}
+
+	var nonce [secretboxNonceLen]byte
+	for i := range nonce {
+		nonce[i] = 0x24
+	}
+
+	crypted, err := EncryptDeterministically(passphrase, plaintext, &salt, &nonce)
+	assert.NoError(t, err)
+
+	// Expected output - this exact byte sequence should be produced by both Go and Rust implementations
+	expected := []byte{
+		0x42, 0x42, 0x42, 0x42, 0x42, 0x42, 0x42, 0x42,
+		0x24, 0x24, 0x24, 0x24, 0x24, 0x24, 0x24, 0x24,
+		0x24, 0x24, 0x24, 0x24, 0x24, 0x24, 0x24, 0x24,
+		0x24, 0x24, 0x24, 0x24, 0x24, 0x24, 0x24, 0x24,
+		0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x1c,
+		0x44, 0x87, 0xfe, 0xcd, 0x6f, 0xcf, 0x10, 0x75,
+		0x7b, 0x4c, 0xb9, 0xc6, 0x59, 0xda, 0x83, 0x61,
+		0x28, 0xfc, 0xf4, 0x30, 0x39, 0x85, 0x4a, 0x66,
+		0xcf, 0xb5, 0xcf, 0xd4,
+	}
+
+	assert.Equal(t, expected, crypted, "Ciphertext should match expected bytes exactly")
+
+	decrypted, err := Decrypt(passphrase, crypted)
+	assert.NoError(t, err)
+	assert.Equal(t, plaintext, decrypted)
+}
