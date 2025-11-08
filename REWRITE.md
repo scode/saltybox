@@ -9,11 +9,29 @@ This document outlines a step-by-step plan for rewriting saltybox in Rust while 
 3. **Format Preservation**: The on-disk format must be byte-for-byte identical
 4. **Behavioral Compatibility**: All edge cases and error handling must match the Go implementation
 5. **Rust Best Practices**: Use idiomatic Rust while preserving exact behavior
+6. **Preserve Go Code**: All existing Go code remains untouched during the rewrite for comparison and cross-testing
+
+## Code Coexistence Strategy
+
+**IMPORTANT**: The Rust rewrite will be developed **alongside** the existing Go implementation, not as a replacement of the code. This means:
+
+- **All Go code stays in place** throughout the entire rewrite process
+- Rust code will live in a separate directory structure (not replacing Go files)
+- Both implementations will coexist in the same repository
+- We can cross-test: encrypt with Go, decrypt with Rust and vice versa
+- Go implementation serves as the reference implementation during development
+- **No Go code deletion until the very end** (if ever - see "Post-Rewrite: Deprecation Strategy")
+
+This approach provides:
+- A stable reference for behavioral comparison
+- Ability to run both implementations side-by-side
+- Safety net during development
+- Confidence in format compatibility through cross-testing
 
 ## Step 1: Project Setup [TODO]
 
 ### Implementation Tasks
-- Initialize Cargo project with workspace structure
+- Initialize Cargo project with workspace structure **in a separate rust/ directory**
 - Set up dependencies:
   - `scrypt` (for key derivation)
   - `crypto_secretbox` or `salsa20` + `poly1305` (for NaCl secretbox)
@@ -24,21 +42,39 @@ This document outlines a step-by-step plan for rewriting saltybox in Rust while 
 - Set up CI/build configuration
 - Create basic module structure:
   ```
-  src/
-    lib.rs        # Library entry point
-    crypto/       # Core encryption (Step 2)
-    armor/        # Armoring layer (Step 3)
-    passphrase/   # Passphrase reading (Step 4)
-    cli/          # CLI (Step 5)
+  rust/                    # New Rust implementation (separate from Go)
+    Cargo.toml
+    src/
+      lib.rs               # Library entry point
+      crypto/              # Core encryption (Step 2)
+      armor/               # Armoring layer (Step 3)
+      passphrase/          # Passphrase reading (Step 4)
+      cli/                 # CLI (Step 5)
+      bin/
+        saltybox.rs        # Main CLI binary
+        golden.rs          # Golden vector tool
+
+  # Existing Go code remains untouched:
+  # ├── commands/
+  # ├── golden/
+  # ├── preader/
+  # ├── secretcrypt/
+  # ├── varmor/
+  # ├── saltybox.go
+  # └── ...
   ```
 
 ### Testing Considerations
 - Ensure project builds
 - Basic "hello world" sanity test
+- Verify Go code still builds and tests pass
 
 ### Key Notes
 - Use a workspace to separate library from binaries (main CLI + golden tool)
 - Set MSRV (Minimum Supported Rust Version) to align with current stable
+- **Do NOT modify or delete any Go files**
+- Rust implementation lives entirely in `rust/` directory
+- Can symlink or copy `testdata/golden-vectors.json` for shared test data
 
 ---
 
@@ -394,14 +430,23 @@ Before building the full CLI, validate correctness against golden vectors:
    - Generated vectors should match existing golden-vectors.json
    - Or at minimum, round-trip correctly
 
+3. **Cross-Implementation Testing** (leveraging coexisting Go code):
+   - Encrypt with Go CLI, decrypt with Rust implementation
+   - Encrypt with Rust implementation, decrypt with Go CLI
+   - Use actual files (not just test vectors)
+   - Verify byte-for-byte identical output when using same salt/nonce
+   - This validates real-world compatibility, not just test vectors
+
 ### Dependencies
 - `serde` + `serde_json` for JSON parsing
 - Existing `testdata/golden-vectors.json` from Go implementation
+- Go implementation (still present in codebase) for cross-testing
 
 ### Key Notes
 - **This step is critical** - it validates that the Rust implementation is byte-for-byte compatible
 - All 63+ test vectors must pass before proceeding
 - Consider running this as a separate integration test
+- Cross-implementation testing is only possible because we kept the Go code!
 
 ---
 
@@ -751,10 +796,11 @@ Create a separate binary for golden vector generation/validation:
    - 63+ test cases covering edge cases
    - Must pass 100% before claiming compatibility
 
-2. **Cross-Implementation Testing**:
+2. **Cross-Implementation Testing** (enabled by keeping Go code):
    - Encrypt with Go implementation, decrypt with Rust
    - Encrypt with Rust implementation, decrypt with Go
    - Test with real-world files
+   - This is a key advantage of maintaining both implementations side-by-side
 
 3. **Byte-Level Inspection**:
    - Compare encrypted output byte-by-byte
@@ -844,14 +890,19 @@ Before considering the rewrite complete:
 
 ---
 
-## Post-Rewrite: Deprecation Strategy (Future)
+## Post-Rewrite: Deprecation Strategy (Far Future - Optional)
 
-Once Rust implementation is stable:
+**NOTE**: This section describes a *potential* future deprecation strategy. It is **NOT** part of the rewrite process itself. The Go code will remain in the repository throughout the rewrite and likely for years afterward (if not indefinitely).
+
+Once Rust implementation is stable and battle-tested:
 
 1. Mark Go implementation as maintenance mode
 2. Encourage new users to use Rust version
 3. Maintain Go version for legacy users
 4. Keep both implementations passing golden vectors
-5. Eventually archive Go version (years later)
+5. Consider archiving Go version only after years of Rust stability
+6. **Or keep both indefinitely** - having two independent implementations is a security advantage
 
 This ensures a smooth transition while maintaining trust in the format.
+
+**During the rewrite**: Both implementations coexist. **No Go code is deleted**.
