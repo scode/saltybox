@@ -11,6 +11,20 @@ This document outlines a step-by-step plan for rewriting saltybox in Rust while 
 5. **Rust Best Practices**: Use idiomatic Rust while preserving exact behavior
 6. **Preserve Go Code**: All existing Go code remains untouched during the rewrite for comparison and cross-testing
 
+## Cryptographic Library Choice
+
+**Decision**: Use RustCrypto's `crypto_secretbox` for XSalsa20Poly1305 encryption.
+
+**Rationale**:
+- Pure Rust implementation from the RustCrypto ecosystem
+- Part of the nacl-compat repository, designed for NaCl API compatibility
+- Implements XSalsa20Poly1305 AEAD (Authenticated Encryption with Associated Data)
+- Provides the exact cryptographic primitive we need (symmetric encryption)
+- Active maintenance within the RustCrypto organization
+- Compatible with NaCl/libsodium implementations
+
+**Crate**: `crypto_secretbox = "0.1"` from https://github.com/RustCrypto/nacl-compat
+
 ## Code Coexistence Strategy
 
 **IMPORTANT**: The Rust rewrite will be developed **alongside** the existing Go implementation, not as a replacement of the code. This means:
@@ -34,7 +48,7 @@ This approach provides:
 - Initialize Cargo project with workspace structure **in a separate rust/ directory**
 - Set up dependencies:
   - `scrypt` (for key derivation)
-  - `crypto_secretbox` or `salsa20` + `poly1305` (for NaCl secretbox)
+  - `crypto_secretbox` (RustCrypto's XSalsa20Poly1305 implementation)
   - `base64` (for armoring)
   - `rand` (for random salt/nonce generation)
   - `anyhow` or `thiserror` (for error handling)
@@ -111,7 +125,9 @@ Implement the core encryption/decryption in `src/crypto/mod.rs`:
    - Generate random 8-byte salt
    - Generate random 24-byte nonce
    - Derive key using scrypt
-   - Encrypt using NaCl secretbox (XSalsa20 + Poly1305)
+   - Encrypt using crypto_secretbox's XSalsa20Poly1305
+   - Use `XSalsa20Poly1305::new()` with the 32-byte key
+   - Use the AEAD `encrypt()` method with nonce and plaintext
    - Binary format: `salt(8) + nonce(24) + length(8) + sealedbox(variable)`
    - Length field: **big-endian signed 64-bit integer** (i64)
    - The sealed box includes the Poly1305 MAC (16 bytes overhead)
@@ -126,7 +142,9 @@ Implement the core encryption/decryption in `src/crypto/mod.rs`:
    - Validate length (see edge cases below)
    - Read sealed box (length bytes)
    - Derive key using scrypt
-   - Decrypt and authenticate using NaCl secretbox
+   - Decrypt and authenticate using crypto_secretbox's XSalsa20Poly1305
+   - Use `XSalsa20Poly1305::new()` with the 32-byte key
+   - Use the AEAD `decrypt()` method with nonce and ciphertext
 
 ### Critical Edge Cases & Behaviors
 
@@ -196,10 +214,15 @@ Implement the core encryption/decryption in `src/crypto/mod.rs`:
    - Encrypt with one passphrase, decrypt with another → error
 
 ### Dependencies
-- `scrypt` crate for key derivation
-- `crypto_secretbox` or implement XSalsa20+Poly1305 using `salsa20` + `poly1305` crates
-- `rand` for random salt/nonce generation
-- `byteorder` or std for big-endian i64 encoding/decoding
+- `scrypt` crate for key derivation (e.g., `scrypt = "0.11"`)
+- `crypto_secretbox` from RustCrypto nacl-compat (e.g., `crypto_secretbox = "0.1"`)
+  - Provides XSalsa20Poly1305 AEAD cipher
+  - Implements the NaCl secretbox primitive
+- `rand` for random salt/nonce generation (e.g., `rand = "0.8"`)
+- Standard library for big-endian i64 encoding/decoding (no external dep needed)
+
+**Note on crypto_secretbox**: Part of RustCrypto's nacl-compat repository, implements
+XSalsa20Poly1305 authenticated encryption matching the NaCl specification.
 
 ---
 
