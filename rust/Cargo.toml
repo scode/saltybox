@@ -23,5 +23,6 @@ scrypt = "0.11"
 crypto_secretbox = "0.1"
 rand = "0.8"
 base64 = "0.22"
+rpassword = "7.3"
 
 [dev-dependencies]
