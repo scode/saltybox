@@ -5,6 +5,35 @@ on:
       - main
   pull_request:
 jobs:
+  rust:
+    name: rust / build+test+fmt+clippy
+    runs-on: ubuntu-latest
+    steps:
+      - name: checkout code
+        uses: actions/checkout@v4
+
+      - name: setup rust
+        uses: actions-rust-lang/setup-rust-toolchain@v1
+        with:
+          components: rustfmt, clippy
+          cache-workspaces: rust
+
+      - name: cargo build
+        working-directory: rust
+        run: cargo build --verbose
+
+      - name: cargo test
+        working-directory: rust
+        run: cargo test --verbose
+
+      - name: cargo fmt check
+        working-directory: rust
+        run: cargo fmt --all -- --check
+
+      - name: cargo clippy
+        working-directory: rust
+        run: cargo clippy --all-targets --all-features -- -D warnings
+
   build_go_1_25:
     name: go / 1.25 / build+test
     runs-on: ubuntu-latest
