@@ -157,6 +157,11 @@ The binary format contains the following, in order:
      sealed using NaCl's `secretbox` (XSalsa20 stream cipher with Poly1305 MAC). The sealed box
      contains the user's plaintext exactly - without any padding or additional metadata.
 
+**Format Validation**: During decryption, the implementation validates that the input ends
+exactly after the sealed box. Any trailing data after the sealed box is rejected as a format
+error (secretcrypt/secretcrypt.go:167-169). This ensures that corrupted or malformed files
+are not silently accepted.
+
 The encryption key is derived from the user-provided passphrase and the salt using scrypt
 with parameters:
 
