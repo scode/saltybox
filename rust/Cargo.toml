@@ -1,0 +1,59 @@
+[package]
+name = "saltybox"
+version = "0.1.0"
+edition = "2021"
+rust-version = "1.70"  # MSRV - adjust as needed
+authors = ["saltybox contributors"]
+description = "Passphrase-based file encryption tool using NaCl secretbox"
+license = "Apache-2.0 OR MIT"
+repository = "https://github.com/scode/saltybox"
+
+[[bin]]
+name = "saltybox"
+path = "src/bin/saltybox.rs"
+
+[[bin]]
+name = "golden"
+path = "src/bin/golden.rs"
+
+[dependencies]
+# Core crypto dependencies
+scrypt = "0.11"
+crypto_secretbox = "0.1"
+rand = "0.8"
+
+# Armoring
+base64 = "0.22"
+
+# Error handling
+anyhow = "1.0"
+thiserror = "1.0"
+
+# CLI (will be used in later steps)
+clap = { version = "4.5", features = ["derive"], optional = true }
+
+# Passphrase reading
+rpassword = { version = "7.3", optional = true }
+
+# Golden vector testing
+serde = { version = "1.0", features = ["derive"], optional = true }
+serde_json = { version = "1.0", optional = true }
+
+# Utilities
+zeroize = "1.7"  # For secure memory handling
+
+[dev-dependencies]
+hex = "0.4"
+tempfile = "3.10"
+
+[features]
+default = ["cli"]
+cli = ["dep:clap", "dep:rpassword"]
+golden = ["dep:serde", "dep:serde_json"]
+
+[profile.release]
+# Security-oriented release profile
+opt-level = 3
+lto = true
+codegen-units = 1
+strip = true
