@@ -13,10 +13,6 @@ default-run = "saltybox"
 name = "saltybox"
 path = "src/bin/saltybox.rs"
 
-[[bin]]
-name = "golden"
-path = "src/bin/golden.rs"
-
 [dependencies]
 anyhow = "1.0"
 scrypt = "0.11"
