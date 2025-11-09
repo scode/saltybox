@@ -40,10 +40,9 @@ fn run_saltybox_with_passphrase(
     child.wait_with_output()
 }
 
-/// Get path to testdata directory (in the parent directory)
+/// Get path to testdata directory
 fn testdata_path(filename: &str) -> PathBuf {
     let mut path = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
-    path.pop(); // Go up to repo root
     path.push("testdata");
     path.push(filename);
     path

@@ -15,7 +15,7 @@ struct GoldenVector {
 }
 
 fn load_golden_vectors() -> Result<Vec<GoldenVector>> {
-    let json_data = include_str!("../../testdata/golden-vectors.json");
+    let json_data = include_str!("../testdata/golden-vectors.json");
     let vectors: Vec<GoldenVector> = serde_json::from_str(json_data)?;
     Ok(vectors)
 }
