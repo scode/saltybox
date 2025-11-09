@@ -30,16 +30,22 @@ Its primary intended use-case is for encrypting small amounts of personal data f
 
 # Requirements
 
-* Go 1.21 or later is required to be [installed](https://golang.org/doc/install).
+* Rust 1.85 or later is required to be [installed](https://www.rust-lang.org/tools/install).
 
 # Installation
 
 ```
- $ go install github.com/scode/saltybox@latest
+ $ cargo install --path .
 ```
 
-Assuming `$GOPATH/bin` (default: `~/go/bin`) is in your `$PATH`, saltybox is now ready
-to use.
+Assuming `~/.cargo/bin` is in your `$PATH`, saltybox is now ready to use.
+
+Alternatively, you can build and run directly from the repository:
+
+```
+ $ cargo build --release
+ $ ./target/release/saltybox --help
+```
 
 If you decide to use saltybox for anything important, please review
 [guidance for use](#guidance-for-use).
@@ -50,21 +56,21 @@ Here's how to encrypt a file (you will be interactively prompted for a
 passphrase):
 
 ```
-./saltybox encrypt -i allmysecrets.txt -o allmysecrets.txt.saltybox
+saltybox encrypt -i allmysecrets.txt -o allmysecrets.txt.saltybox
 ```
 
 And here is how to decrypt it afterwards (again, you will be
 interactively prompted for a passphrase):
 
 ```
-./saltybox decrypt -i allmysecrets.txt.saltybox -o allmysecrets.txt
+saltybox decrypt -i allmysecrets.txt.saltybox -o allmysecrets.txt
 ```
 
 And here is how to update a previously encrypted file in a manner that
 ensures the passphrase is not accidentally changed:
 
 ```
-./saltybox update -i allmysecrets-updated.txt -o allmysecrets.txt.saltybox
+saltybox update -i allmysecrets-updated.txt -o allmysecrets.txt.saltybox
 ```
 
 # Features and limitations
@@ -95,12 +101,12 @@ that you are able to decrypt your data if such a thing were to happen, the follo
 are recommended:
 
 * Store a copy of the binary for your platform(s) in a safe place.
-* In a copy of the source code, run `go mod vendor` to download all necessary dependencies
-  into the `vendor` directory. Ensure saltybox builds with `go build -mod=vendor`. Then
-  store a copy of the complete source tree (including `vendor`) in a safe place.
+* In a copy of the source code, run `cargo vendor` to download all necessary dependencies
+  into the `vendor` directory. Ensure saltybox builds with `cargo build --frozen --offline`. Then
+  store a copy of the complete source tree (including `vendor` and `Cargo.lock`) in a safe place.
 
 In an emergency need to decrypt data, this should maximize your chances of being able to do so without
-relying on external projects/people aside from the Go language tools themselves remaining available.
+relying on external projects/people aside from the Rust language tools themselves remaining available.
 
 # Format/API contract
 
@@ -167,25 +173,19 @@ with parameters:
 
 # Golden Test Vectors
 
-The `golden` tool (`go run ./golden`)generates comprehensive test vectors
-for purpose of correctness/compatibility testing
+The repository includes comprehensive test vectors in `testdata/golden-vectors.json`
+for purpose of correctness/compatibility testing.
 
 ## Usage
 
-Generate golden test vectors:
+Run golden vector tests:
 
 ```
-go run ./golden generate
+cargo test --test golden_vectors -- --ignored
 ```
 
-This creates `testdata/golden-vectors.json` containing test cases
-that exercise edge cases and various aspects of the format.
-
-Validate against golden vectors:
-
-```
-go run ./golden validate
-```
+(The arguments are required because by default not all golden vectors
+are tested in order to avoid adding multiple seconds to test time.)
 
 ## Golden Vectors Format
 
