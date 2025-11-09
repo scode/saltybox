@@ -2,7 +2,6 @@
 
 #![forbid(unsafe_code)]
 
-pub mod cli;
 pub mod file_ops;
 pub mod passphrase;
 pub mod secretcrypt;
