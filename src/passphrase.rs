@@ -1,6 +1,6 @@
 //! Passphrase reading functionality
 
-use anyhow::Result;
+use crate::error::{ErrorCategory, ErrorKind, Result, SaltyboxError};
 use std::io::{self, IsTerminal, Read, Write};
 
 /// Trait for reading passphrases from various sources
@@ -40,10 +40,22 @@ impl ReaderPassphraseReader {
 impl PassphraseReader for ReaderPassphraseReader {
     fn read_passphrase(&mut self) -> Result<String> {
         let mut data = Vec::new();
-        self.reader
-            .read_to_end(&mut data)
-            .map_err(|e| anyhow::anyhow!("error reading passphrase: {}", e))?;
-        Ok(String::from_utf8(data)?)
+        self.reader.read_to_end(&mut data).map_err(|e| {
+            SaltyboxError::with_kind_and_source(
+                ErrorCategory::Internal,
+                ErrorKind::Io,
+                format!("error reading passphrase: {}", e),
+                e,
+            )
+        })?;
+        String::from_utf8(data).map_err(|e| {
+            SaltyboxError::with_kind_and_source(
+                ErrorCategory::User,
+                ErrorKind::PassphraseUnavailable,
+                format!("passphrase is not valid UTF-8: {}", e),
+                e,
+            )
+        })
     }
 }
 /// Reads passphrase from terminal with no echo
@@ -64,17 +76,41 @@ impl Default for TerminalPassphraseReader {
 impl PassphraseReader for TerminalPassphraseReader {
     fn read_passphrase(&mut self) -> Result<String> {
         if !io::stdin().is_terminal() {
-            anyhow::bail!("cannot read passphrase from terminal - stdin is not a terminal");
+            return Err(SaltyboxError::with_kind(
+                ErrorCategory::User,
+                ErrorKind::PassphraseUnavailable,
+                "cannot read passphrase from terminal - stdin is not a terminal",
+            ));
         }
 
         io::stderr()
             .write_all(b"Passphrase (saltybox): ")
-            .map_err(|e| anyhow::anyhow!("failed to write prompt: {}", e))?;
-        io::stderr().flush()?;
+            .map_err(|e| {
+                SaltyboxError::with_kind_and_source(
+                    ErrorCategory::Internal,
+                    ErrorKind::Io,
+                    format!("failed to write prompt: {}", e),
+                    e,
+                )
+            })?;
+        io::stderr().flush().map_err(|e| {
+            SaltyboxError::with_kind_and_source(
+                ErrorCategory::Internal,
+                ErrorKind::Io,
+                format!("failed to flush prompt: {}", e),
+                e,
+            )
+        })?;
 
         // Read password *without echo*
-        let passphrase = rpassword::read_password()
-            .map_err(|e| anyhow::anyhow!("failure reading passphrase: {}", e))?;
+        let passphrase = rpassword::read_password().map_err(|e| {
+            SaltyboxError::with_kind_and_source(
+                ErrorCategory::Internal,
+                ErrorKind::PassphraseUnavailable,
+                format!("failure reading passphrase: {}", e),
+                e,
+            )
+        })?;
 
         Ok(passphrase)
     }
@@ -111,6 +147,7 @@ impl PassphraseReader for CachingPassphraseReader {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::error::{ErrorCategory, ErrorKind, SaltyboxError};
 
     #[test]
     fn test_constant_reader() {
@@ -193,7 +230,11 @@ mod tests {
 
         impl PassphraseReader for FailingReader {
             fn read_passphrase(&mut self) -> Result<String> {
-                anyhow::bail!("simulated error");
+                Err(SaltyboxError::with_kind(
+                    ErrorCategory::Internal,
+                    ErrorKind::PassphraseUnavailable,
+                    "simulated error",
+                ))
             }
         }
 

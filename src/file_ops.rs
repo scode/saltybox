@@ -3,14 +3,13 @@
 //! This module provides high-level file operations for encrypting, decrypting,
 //! and updating files using the saltybox format.
 
-use anyhow::{Context, Result};
-use std::fs;
-use std::io::Write;
-use std::path::Path;
-
+use crate::error::{ErrorCategory, ErrorKind, Result, SaltyboxError};
 use crate::passphrase::PassphraseReader;
 use crate::secretcrypt;
 use crate::varmor;
+use std::fs;
+use std::io::{self, Write};
+use std::path::Path;
 
 /// Encrypt a file with a passphrase
 ///
@@ -23,14 +22,13 @@ pub fn encrypt_file(
     output_path: &Path,
     passphrase_reader: &mut dyn PassphraseReader,
 ) -> Result<()> {
-    let plaintext = fs::read(input_path)
-        .with_context(|| format!("failed to read from {}", input_path.display()))?;
+    let plaintext = fs::read(input_path).map_err(|e| read_error(input_path, e))?;
     let passphrase = passphrase_reader.read_passphrase()?;
-    let ciphertext =
-        secretcrypt::encrypt(passphrase.as_bytes(), &plaintext).context("encryption failed")?;
+    let ciphertext = secretcrypt::encrypt(passphrase.as_bytes(), &plaintext)
+        .map_err(|e| e.with_context("encryption failed"))?;
     let armored = varmor::wrap(&ciphertext);
     write_file_secure(output_path, armored.as_bytes())
-        .with_context(|| format!("failed to write to {}", output_path.display()))?;
+        .map_err(|e| e.with_context(format!("failed to write to {}", output_path.display())))?;
 
     Ok(())
 }
@@ -46,15 +44,21 @@ pub fn decrypt_file(
     output_path: &Path,
     passphrase_reader: &mut dyn PassphraseReader,
 ) -> Result<()> {
-    let armored_bytes = fs::read(input_path)
-        .with_context(|| format!("failed to read from {}", input_path.display()))?;
-    let armored = String::from_utf8(armored_bytes).context("input file is not valid UTF-8")?;
+    let armored_bytes = fs::read(input_path).map_err(|e| read_error(input_path, e))?;
+    let armored = String::from_utf8(armored_bytes).map_err(|e| {
+        SaltyboxError::with_kind_and_source(
+            ErrorCategory::User,
+            ErrorKind::Io,
+            "input file is not valid UTF-8",
+            e,
+        )
+    })?;
     let passphrase = passphrase_reader.read_passphrase()?;
-    let ciphertext = varmor::unwrap(&armored).context("failed to unarmor")?;
-    let plaintext =
-        secretcrypt::decrypt(passphrase.as_bytes(), &ciphertext).context("failed to decrypt")?;
+    let ciphertext = varmor::unwrap(&armored).map_err(|e| e.with_context("failed to unarmor"))?;
+    let plaintext = secretcrypt::decrypt(passphrase.as_bytes(), &ciphertext)
+        .map_err(|e| e.with_context("failed to decrypt"))?;
     write_file_secure(output_path, &plaintext)
-        .with_context(|| format!("failed to write to {}", output_path.display()))?;
+        .map_err(|e| e.with_context(format!("failed to write to {}", output_path.display())))?;
     Ok(())
 }
 
@@ -75,37 +79,69 @@ pub fn update_file(
     crypt_path: &Path,
     passphrase_reader: &mut dyn PassphraseReader,
 ) -> Result<()> {
-    let armored_bytes = fs::read(crypt_path)
-        .with_context(|| format!("failed to read from {}", crypt_path.display()))?;
-    let armored = String::from_utf8(armored_bytes).context("encrypted file is not valid UTF-8")?;
+    let armored_bytes = fs::read(crypt_path).map_err(|e| read_error(crypt_path, e))?;
+    let armored = String::from_utf8(armored_bytes).map_err(|e| {
+        SaltyboxError::with_kind_and_source(
+            ErrorCategory::User,
+            ErrorKind::Io,
+            "encrypted file is not valid UTF-8",
+            e,
+        )
+    })?;
     let passphrase = passphrase_reader.read_passphrase()?;
 
     // Validate passphrase by decrypting existing file (discard plaintext)
-    let ciphertext = varmor::unwrap(&armored).context("failed to unarmor")?;
-    secretcrypt::decrypt(passphrase.as_bytes(), &ciphertext).context("failed to decrypt")?;
+    let ciphertext = varmor::unwrap(&armored).map_err(|e| e.with_context("failed to unarmor"))?;
+    secretcrypt::decrypt(passphrase.as_bytes(), &ciphertext)
+        .map_err(|e| e.with_context("failed to decrypt"))?;
 
     // Great, let's re-write it (atomically).
-    let crypt_dir = crypt_path
-        .parent()
-        .context("crypt_path has no parent directory")?;
-    let mut temp_file =
-        tempfile::NamedTempFile::new_in(crypt_dir).context("failed to create tempfile")?;
-    let new_plaintext = fs::read(plain_path)
-        .with_context(|| format!("failed to read from {}", plain_path.display()))?;
-    let new_ciphertext =
-        secretcrypt::encrypt(passphrase.as_bytes(), &new_plaintext).context("failed to encrypt")?;
+    let crypt_dir = crypt_path.parent().ok_or_else(|| {
+        SaltyboxError::with_kind(
+            ErrorCategory::User,
+            ErrorKind::Io,
+            "crypt_path has no parent directory",
+        )
+    })?;
+    let mut temp_file = tempfile::NamedTempFile::new_in(crypt_dir).map_err(|e| {
+        SaltyboxError::with_kind_and_source(
+            ErrorCategory::Internal,
+            ErrorKind::Io,
+            "failed to create tempfile",
+            e,
+        )
+    })?;
+    let new_plaintext = fs::read(plain_path).map_err(|e| read_error(plain_path, e))?;
+    let new_ciphertext = secretcrypt::encrypt(passphrase.as_bytes(), &new_plaintext)
+        .map_err(|e| e.with_context("failed to encrypt"))?;
     let new_armored = varmor::wrap(&new_ciphertext);
 
-    temp_file
-        .write_all(new_armored.as_bytes())
-        .context("failed to write to tempfile")?;
+    temp_file.write_all(new_armored.as_bytes()).map_err(|e| {
+        SaltyboxError::with_kind_and_source(
+            ErrorCategory::Internal,
+            ErrorKind::Io,
+            "failed to write to tempfile",
+            e,
+        )
+    })?;
     // Flush and fsync() such that the rename later, if it succeeds, will
     // always point to a valid file.
-    temp_file.flush().context("failed to flush tempfile")?;
-    temp_file
-        .as_file()
-        .sync_all()
-        .context("failed to sync file prior to rename")?;
+    temp_file.flush().map_err(|e| {
+        SaltyboxError::with_kind_and_source(
+            ErrorCategory::Internal,
+            ErrorKind::Io,
+            "failed to flush tempfile",
+            e,
+        )
+    })?;
+    temp_file.as_file().sync_all().map_err(|e| {
+        SaltyboxError::with_kind_and_source(
+            ErrorCategory::Internal,
+            ErrorKind::Io,
+            "failed to sync file prior to rename",
+            e,
+        )
+    })?;
 
     // Atomically rename temp file to target (persist with restrictive permissions)
     #[cfg(unix)]
@@ -114,17 +150,33 @@ pub fn update_file(
         let mut perms = temp_file
             .as_file()
             .metadata()
-            .context("failed to get tempfile metadata")?
+            .map_err(|e| {
+                SaltyboxError::with_kind_and_source(
+                    ErrorCategory::Internal,
+                    ErrorKind::Io,
+                    "failed to get tempfile metadata",
+                    e,
+                )
+            })?
             .permissions();
         perms.set_mode(0o600);
-        temp_file
-            .as_file()
-            .set_permissions(perms)
-            .context("failed to set tempfile permissions")?;
+        temp_file.as_file().set_permissions(perms).map_err(|e| {
+            SaltyboxError::with_kind_and_source(
+                ErrorCategory::Internal,
+                ErrorKind::Io,
+                "failed to set tempfile permissions",
+                e,
+            )
+        })?;
     }
-    temp_file
-        .persist(crypt_path)
-        .with_context(|| format!("failed to rename to target file {}", crypt_path.display()))?;
+    temp_file.persist(crypt_path).map_err(|e| {
+        SaltyboxError::with_kind_and_source(
+            ErrorCategory::Internal,
+            ErrorKind::Io,
+            format!("failed to rename to target file {}", crypt_path.display()),
+            e,
+        )
+    })?;
     Ok(())
 }
 
@@ -140,22 +192,59 @@ fn write_file_secure(path: &Path, contents: &[u8]) -> Result<()> {
             .create(true)
             .truncate(true)
             .mode(0o600)
-            .open(path)?;
+            .open(path)
+            .map_err(|e| {
+                SaltyboxError::with_kind_and_source(
+                    ErrorCategory::User,
+                    ErrorKind::Io,
+                    format!("failed to open {}", path.display()),
+                    e,
+                )
+            })?;
 
-        file.write_all(contents)?;
+        file.write_all(contents).map_err(|e| {
+            SaltyboxError::with_kind_and_source(
+                ErrorCategory::Internal,
+                ErrorKind::Io,
+                format!("failed to write {}", path.display()),
+                e,
+            )
+        })?;
         Ok(())
     }
 
     #[cfg(not(unix))]
     {
-        fs::write(path, contents)?;
+        fs::write(path, contents).map_err(|e| {
+            SaltyboxError::with_kind_and_source(
+                ErrorCategory::User,
+                ErrorKind::Io,
+                format!("failed to write {}", path.display()),
+                e,
+            )
+        })?;
         Ok(())
     }
+}
+
+fn read_error(path: &Path, err: io::Error) -> SaltyboxError {
+    let category = if err.kind() == io::ErrorKind::NotFound {
+        ErrorCategory::User
+    } else {
+        ErrorCategory::Internal
+    };
+    SaltyboxError::with_kind_and_source(
+        category,
+        ErrorKind::Io,
+        format!("failed to read from {}", path.display()),
+        err,
+    )
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::error::ErrorKind;
     use crate::passphrase::ConstantPassphraseReader;
     use std::fs;
     use tempfile::TempDir;
@@ -225,13 +314,8 @@ mod tests {
         let mut reader = ConstantPassphraseReader::new("wrong password".to_string());
         let result = update_file(&plain2_path, &crypt_path, &mut reader);
 
-        assert!(result.is_err());
-        assert!(
-            result
-                .unwrap_err()
-                .to_string()
-                .contains("failed to decrypt")
-        );
+        let err = result.expect_err("expected authentication failure");
+        assert_eq!(err.kind, Some(ErrorKind::AuthenticationFailed));
     }
 
     #[test]

@@ -4,6 +4,7 @@
 //! NaCl secretbox (XSalsa20Poly1305) with scrypt key derivation.
 
 use clap::{Parser, Subcommand};
+use std::error::Error as StdError;
 use std::path::PathBuf;
 use std::process;
 
@@ -82,7 +83,7 @@ fn main() {
     };
 
     if let Err(e) = result {
-        eprintln!("Error: {:#}", e);
+        report_error(&e);
         process::exit(1);
     }
 }
@@ -92,5 +93,14 @@ fn get_passphrase_reader(use_stdin: bool) -> Box<dyn PassphraseReader> {
         Box::new(ReaderPassphraseReader::new(Box::new(std::io::stdin())))
     } else {
         Box::new(TerminalPassphraseReader)
+    }
+}
+
+fn report_error(err: &dyn StdError) {
+    eprintln!("Error: {}", err);
+    let mut source = err.source();
+    while let Some(cause) = source {
+        eprintln!("  caused by: {}", cause);
+        source = cause.source();
     }
 }

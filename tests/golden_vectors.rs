@@ -1,6 +1,5 @@
 //! Golden test vector validation
 
-use anyhow::Result;
 use base64::{Engine, engine::general_purpose::STANDARD as BASE64_STANDARD};
 use serde::Deserialize;
 
@@ -14,7 +13,7 @@ struct GoldenVector {
     comment: String,
 }
 
-fn load_golden_vectors() -> Result<Vec<GoldenVector>> {
+fn load_golden_vectors() -> serde_json::Result<Vec<GoldenVector>> {
     let json_data = include_str!("../testdata/golden-vectors.json");
     let vectors: Vec<GoldenVector> = serde_json::from_str(json_data)?;
     Ok(vectors)

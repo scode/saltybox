@@ -2,7 +2,10 @@
 
 #![forbid(unsafe_code)]
 
+pub mod error;
 pub mod file_ops;
 pub mod passphrase;
 pub mod secretcrypt;
 pub mod varmor;
+
+pub use error::{ErrorCategory, ErrorKind, Result, SaltyboxError};
