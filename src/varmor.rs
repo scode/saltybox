@@ -6,7 +6,7 @@
 //! - Safe to embed in URLs
 //! - Safe to pass unescaped in a POSIX shell
 
-use anyhow::{Result, bail};
+use crate::error::{ErrorCategory, ErrorKind, Result, SaltyboxError};
 use base64::{Engine, engine::general_purpose::URL_SAFE_NO_PAD};
 
 /// Magic prefix for all saltybox versions
@@ -26,18 +26,35 @@ pub fn wrap(body: &[u8]) -> String {
 /// Unwrap an armored string, returning the original bytes
 pub fn unwrap(armored: &str) -> Result<Vec<u8>> {
     if armored.len() < V1_MAGIC.len() {
-        bail!("input size smaller than magic marker; likely truncated");
+        return Err(SaltyboxError::with_kind(
+            ErrorCategory::User,
+            ErrorKind::ArmoringInvalid,
+            "input size smaller than magic marker; likely truncated",
+        ));
     }
 
     if let Some(encoded) = armored.strip_prefix(V1_MAGIC) {
-        let body = URL_SAFE_NO_PAD
-            .decode(encoded)
-            .map_err(|e| anyhow::anyhow!("base64 decoding failed: {}", e))?;
+        let body = URL_SAFE_NO_PAD.decode(encoded).map_err(|e| {
+            SaltyboxError::with_kind_and_source(
+                ErrorCategory::User,
+                ErrorKind::ArmoringDecode,
+                format!("base64 decoding failed: {}", e),
+                e,
+            )
+        })?;
         Ok(body)
     } else if armored.starts_with(MAGIC_PREFIX) {
-        bail!("input claims to be saltybox, but not a version we support");
+        Err(SaltyboxError::with_kind(
+            ErrorCategory::User,
+            ErrorKind::ArmoringFromFuture,
+            "input claims to be saltybox, but not a version we support",
+        ))
     } else {
-        bail!("input unrecognized as saltybox data");
+        Err(SaltyboxError::with_kind(
+            ErrorCategory::User,
+            ErrorKind::ArmoringInvalid,
+            "input unrecognized as saltybox data",
+        ))
     }
 }
 
@@ -88,45 +105,29 @@ mod tests {
     #[test]
     fn test_truncated_input() {
         let result = unwrap("");
-        assert!(result.is_err());
-        assert!(
-            result
-                .unwrap_err()
-                .to_string()
-                .contains("input size smaller than magic marker; likely truncated")
-        );
+        let err = result.expect_err("expected truncated input error");
+        assert_eq!(err.kind, Some(ErrorKind::ArmoringInvalid));
     }
 
     #[test]
     fn test_wrong_version() {
         let result = unwrap("saltybox999999:...");
-        assert!(result.is_err());
-        assert_eq!(
-            result.unwrap_err().to_string(),
-            "input claims to be saltybox, but not a version we support"
-        );
+        let err = result.expect_err("expected unsupported version error");
+        assert_eq!(err.kind, Some(ErrorKind::ArmoringFromFuture));
     }
 
     #[test]
     fn test_not_saltybox() {
         let result = unwrap("something not looking like saltybox data");
-        assert!(result.is_err());
-        assert_eq!(
-            result.unwrap_err().to_string(),
-            "input unrecognized as saltybox data"
-        );
+        let err = result.expect_err("expected non-saltybox error");
+        assert_eq!(err.kind, Some(ErrorKind::ArmoringInvalid));
     }
 
     #[test]
     fn test_bad_base64() {
         let result = unwrap("saltybox1:bad$$");
-        assert!(result.is_err());
-        assert!(
-            result
-                .unwrap_err()
-                .to_string()
-                .contains("base64 decoding failed")
-        );
+        let err = result.expect_err("expected base64 decode error");
+        assert_eq!(err.kind, Some(ErrorKind::ArmoringDecode));
     }
 
     #[test]

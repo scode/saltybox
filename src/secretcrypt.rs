@@ -10,7 +10,7 @@
 //! - length: 8 bytes (big-endian signed int64)
 //! - sealed box: variable length (includes 16-byte Poly1305 MAC)
 
-use anyhow::{Context, Result, bail};
+use crate::error::{ErrorCategory, ErrorKind, Result, SaltyboxError};
 use crypto_secretbox::aead::{Aead, KeyInit};
 use crypto_secretbox::{Nonce, XSalsa20Poly1305};
 use rand::RngCore;
@@ -44,10 +44,24 @@ fn derive_key(passphrase: &[u8], salt: &[u8; SALT_LEN]) -> Result<[u8; KEY_LEN]>
         SCRYPT_P,
         KEY_LEN,
     )
-    .context("failed to create scrypt params")?;
+    .map_err(|e| {
+        SaltyboxError::with_kind_and_source(
+            ErrorCategory::Internal,
+            ErrorKind::ScryptFailure,
+            "failed to create scrypt params",
+            e,
+        )
+    })?;
 
     let mut key = [0u8; KEY_LEN];
-    scrypt(passphrase, salt, &params, &mut key).context("scrypt key derivation failed")?;
+    scrypt(passphrase, salt, &params, &mut key).map_err(|e| {
+        SaltyboxError::with_kind_and_source(
+            ErrorCategory::Internal,
+            ErrorKind::ScryptFailure,
+            "scrypt key derivation failed",
+            e,
+        )
+    })?;
 
     Ok(key)
 }
@@ -80,9 +94,13 @@ pub fn encrypt_deterministic(
     let cipher = XSalsa20Poly1305::new(&key.into());
 
     let nonce_obj = Nonce::from(*nonce);
-    let sealed_box = cipher
-        .encrypt(&nonce_obj, plaintext)
-        .map_err(|e| anyhow::anyhow!("encryption failed: {}", e))?;
+    let sealed_box = cipher.encrypt(&nonce_obj, plaintext).map_err(|e| {
+        SaltyboxError::with_kind(
+            ErrorCategory::Internal,
+            ErrorKind::SecretboxFailure,
+            format!("encryption failed: {}", e),
+        )
+    })?;
 
     let sealed_box_len = sealed_box.len() as i64;
     let mut output =
@@ -100,62 +118,116 @@ pub fn decrypt(passphrase: &[u8], ciphertext: &[u8]) -> Result<Vec<u8>> {
     let mut pos = 0;
 
     if ciphertext.len() < pos + SALT_LEN {
-        bail!("input likely truncated while reading salt");
+        return Err(SaltyboxError::with_kind(
+            ErrorCategory::User,
+            ErrorKind::TruncatedInput,
+            "input likely truncated while reading salt",
+        ));
     }
-    let salt: [u8; SALT_LEN] = ciphertext[pos..pos + SALT_LEN]
-        .try_into()
-        .context("failed to read salt")?;
+    let salt: [u8; SALT_LEN] = ciphertext[pos..pos + SALT_LEN].try_into().map_err(|e| {
+        SaltyboxError::with_kind_and_source(
+            ErrorCategory::Internal,
+            ErrorKind::InternalInvariant,
+            "failed to read salt",
+            e,
+        )
+    })?;
     pos += SALT_LEN;
 
     if ciphertext.len() < pos + NONCE_LEN {
-        bail!("input likely truncated while reading nonce");
+        return Err(SaltyboxError::with_kind(
+            ErrorCategory::User,
+            ErrorKind::TruncatedInput,
+            "input likely truncated while reading nonce",
+        ));
     }
-    let nonce: [u8; NONCE_LEN] = ciphertext[pos..pos + NONCE_LEN]
-        .try_into()
-        .context("failed to read nonce")?;
+    let nonce: [u8; NONCE_LEN] = ciphertext[pos..pos + NONCE_LEN].try_into().map_err(|e| {
+        SaltyboxError::with_kind_and_source(
+            ErrorCategory::Internal,
+            ErrorKind::InternalInvariant,
+            "failed to read nonce",
+            e,
+        )
+    })?;
     pos += NONCE_LEN;
 
     if ciphertext.len() < pos + size_of::<i64>() {
-        bail!("input likely truncated while reading sealed box");
+        return Err(SaltyboxError::with_kind(
+            ErrorCategory::User,
+            ErrorKind::TruncatedInput,
+            "input likely truncated while reading sealed box",
+        ));
     }
-    let length_bytes: [u8; 8] = ciphertext[pos..pos + size_of::<i64>()]
-        .try_into()
-        .context("failed to read length")?;
+    let length_bytes: [u8; 8] =
+        ciphertext[pos..pos + size_of::<i64>()]
+            .try_into()
+            .map_err(|e| {
+                SaltyboxError::with_kind_and_source(
+                    ErrorCategory::Internal,
+                    ErrorKind::InternalInvariant,
+                    "failed to read length",
+                    e,
+                )
+            })?;
     let sealed_box_len = i64::from_be_bytes(length_bytes);
     pos += size_of::<i64>();
 
     if sealed_box_len < 0 {
-        bail!("negative sealed box length (when interpreted as a big-endian i64)");
+        return Err(SaltyboxError::with_kind(
+            ErrorCategory::User,
+            ErrorKind::BinaryFormat,
+            "negative sealed box length (when interpreted as a big-endian i64)",
+        ));
     }
 
     // Check if length exceeds platform's maximum isize. *Valid* input
     // can fail this check if the platforms' isize is small.
     if sealed_box_len > isize::MAX as i64 {
-        bail!("sealed box length exceeds this system's max isize");
+        return Err(SaltyboxError::with_kind(
+            ErrorCategory::User,
+            ErrorKind::BinaryFormat,
+            "sealed box length exceeds this system's max isize",
+        ));
     }
 
     let sealed_box_len = sealed_box_len as usize;
 
     if sealed_box_len > ciphertext.len() {
-        bail!("truncated or corrupt input; claimed length greater than available input");
+        return Err(SaltyboxError::with_kind(
+            ErrorCategory::User,
+            ErrorKind::BinaryFormat,
+            "truncated or corrupt input; claimed length greater than available input",
+        ));
     }
 
     if ciphertext.len() < pos + sealed_box_len {
-        bail!("truncated or corrupt input (while reading sealed box)");
+        return Err(SaltyboxError::with_kind(
+            ErrorCategory::User,
+            ErrorKind::TruncatedInput,
+            "truncated or corrupt input (while reading sealed box)",
+        ));
     }
     let sealed_box = &ciphertext[pos..pos + sealed_box_len];
     pos += sealed_box_len;
 
     if pos < ciphertext.len() {
-        bail!("invalid input: unexpected data after sealed box");
+        return Err(SaltyboxError::with_kind(
+            ErrorCategory::User,
+            ErrorKind::TrailingData,
+            "invalid input: unexpected data after sealed box",
+        ));
     }
 
     let key = derive_key(passphrase, &salt)?;
     let cipher = XSalsa20Poly1305::new(&key.into());
     let nonce_obj = Nonce::from(nonce);
-    let plaintext = cipher
-        .decrypt(&nonce_obj, sealed_box)
-        .map_err(|_| anyhow::anyhow!("corrupt input, tampered-with data, or bad passphrase"))?;
+    let plaintext = cipher.decrypt(&nonce_obj, sealed_box).map_err(|_| {
+        SaltyboxError::with_kind(
+            ErrorCategory::User,
+            ErrorKind::AuthenticationFailed,
+            "corrupt input, tampered-with data, or bad passphrase",
+        )
+    })?;
 
     Ok(plaintext)
 }
@@ -234,13 +306,8 @@ mod tests {
         let ciphertext = encrypt(b"correct", plaintext).unwrap();
         let result = decrypt(b"wrong", &ciphertext);
 
-        assert!(result.is_err());
-        assert!(
-            result
-                .unwrap_err()
-                .to_string()
-                .contains("corrupt input, tampered-with data, or bad passphrase")
-        );
+        let err = result.expect_err("expected authentication failure");
+        assert_eq!(err.kind, Some(ErrorKind::AuthenticationFailed));
     }
 
     #[test]
@@ -248,13 +315,8 @@ mod tests {
         let ciphertext = vec![1, 2, 3]; // Less than SALT_LEN
         let result = decrypt(b"test", &ciphertext);
 
-        assert!(result.is_err());
-        assert!(
-            result
-                .unwrap_err()
-                .to_string()
-                .contains("input likely truncated while reading salt")
-        );
+        let err = result.expect_err("expected truncated input error");
+        assert_eq!(err.kind, Some(ErrorKind::TruncatedInput));
     }
 
     #[test]
@@ -262,13 +324,8 @@ mod tests {
         let ciphertext = vec![0u8; SALT_LEN + 3]; // Incomplete nonce
         let result = decrypt(b"test", &ciphertext);
 
-        assert!(result.is_err());
-        assert!(
-            result
-                .unwrap_err()
-                .to_string()
-                .contains("input likely truncated while reading nonce")
-        );
+        let err = result.expect_err("expected truncated input error");
+        assert_eq!(err.kind, Some(ErrorKind::TruncatedInput));
     }
 
     #[test]
@@ -276,13 +333,8 @@ mod tests {
         let ciphertext = vec![0u8; SALT_LEN + NONCE_LEN + 3]; // Incomplete length
         let result = decrypt(b"test", &ciphertext);
 
-        assert!(result.is_err());
-        assert!(
-            result
-                .unwrap_err()
-                .to_string()
-                .contains("input likely truncated while reading sealed box")
-        );
+        let err = result.expect_err("expected truncated input error");
+        assert_eq!(err.kind, Some(ErrorKind::TruncatedInput));
     }
 
     #[test]
@@ -295,13 +347,8 @@ mod tests {
 
         let result = decrypt(b"test", &ciphertext);
 
-        assert!(result.is_err());
-        assert!(
-            result
-                .unwrap_err()
-                .to_string()
-                .contains("negative sealed box length")
-        );
+        let err = result.expect_err("expected binary format error");
+        assert_eq!(err.kind, Some(ErrorKind::BinaryFormat));
     }
 
     #[test]
@@ -318,12 +365,8 @@ mod tests {
 
         let result = decrypt(passphrase, &ciphertext);
 
-        assert!(result.is_err());
-        assert!(
-            result.unwrap_err().to_string().contains(
-                "truncated or corrupt input; claimed length greater than available input"
-            )
-        );
+        let err = result.expect_err("expected binary format error");
+        assert_eq!(err.kind, Some(ErrorKind::BinaryFormat));
     }
 
     #[test]
@@ -337,13 +380,8 @@ mod tests {
 
         let result = decrypt(passphrase, &ciphertext);
 
-        assert!(result.is_err());
-        assert!(
-            result
-                .unwrap_err()
-                .to_string()
-                .contains("invalid input: unexpected data after sealed box")
-        );
+        let err = result.expect_err("expected trailing data error");
+        assert_eq!(err.kind, Some(ErrorKind::TrailingData));
     }
 
     #[test]

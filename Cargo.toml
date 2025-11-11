@@ -14,7 +14,7 @@ name = "saltybox"
 path = "src/bin/saltybox.rs"
 
 [dependencies]
-anyhow = "1.0"
+thiserror = "1.0"
 scrypt = "0.11"
 crypto_secretbox = "0.1"
 rand = "0.8"
