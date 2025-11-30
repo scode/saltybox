@@ -17,6 +17,7 @@ use rand::RngCore;
 use rand::rngs::OsRng;
 use scrypt::{Params, scrypt};
 use std::mem::{size_of, size_of_val};
+use zeroize::Zeroizing;
 
 /// Length of salt in bytes
 const SALT_LEN: usize = 8;
@@ -37,7 +38,7 @@ const SCRYPT_R: u32 = 8;
 const SCRYPT_P: u32 = 1;
 
 /// Derive a 32-byte key from a passphrase and salt using scrypt
-fn derive_key(passphrase: &[u8], salt: &[u8; SALT_LEN]) -> Result<[u8; KEY_LEN]> {
+fn derive_key(passphrase: &[u8], salt: &[u8; SALT_LEN]) -> Result<Zeroizing<[u8; KEY_LEN]>> {
     let params = Params::new(
         (SCRYPT_N as f64).log2() as u8, // log_n
         SCRYPT_R,
@@ -53,8 +54,8 @@ fn derive_key(passphrase: &[u8], salt: &[u8; SALT_LEN]) -> Result<[u8; KEY_LEN]>
         )
     })?;
 
-    let mut key = [0u8; KEY_LEN];
-    scrypt(passphrase, salt, &params, &mut key).map_err(|e| {
+    let mut key = Zeroizing::new([0u8; KEY_LEN]);
+    scrypt(passphrase, salt, &params, &mut *key).map_err(|e| {
         SaltyboxError::with_kind_and_source(
             ErrorCategory::Internal,
             ErrorKind::ScryptFailure,
@@ -91,7 +92,7 @@ pub fn encrypt_deterministic(
 ) -> Result<Vec<u8>> {
     let key = derive_key(passphrase, salt)?;
 
-    let cipher = XSalsa20Poly1305::new(&key.into());
+    let cipher = XSalsa20Poly1305::new((&*key).into());
 
     let nonce_obj = Nonce::from(*nonce);
     let sealed_box = cipher.encrypt(&nonce_obj, plaintext).map_err(|e| {
@@ -219,7 +220,7 @@ pub fn decrypt(passphrase: &[u8], ciphertext: &[u8]) -> Result<Vec<u8>> {
     }
 
     let key = derive_key(passphrase, &salt)?;
-    let cipher = XSalsa20Poly1305::new(&key.into());
+    let cipher = XSalsa20Poly1305::new((&*key).into());
     let nonce_obj = Nonce::from(nonce);
     let plaintext = cipher.decrypt(&nonce_obj, sealed_box).map_err(|_| {
         SaltyboxError::with_kind(
