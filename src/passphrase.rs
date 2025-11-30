@@ -5,23 +5,23 @@ use std::io::{self, IsTerminal, Read, Write};
 
 /// Trait for reading passphrases from various sources
 pub trait PassphraseReader {
-    /// Read a passphrase
-    fn read_passphrase(&mut self) -> Result<String>;
+    /// Read a passphrase as arbitrary bytes (not necessarily UTF-8)
+    fn read_passphrase(&mut self) -> Result<Vec<u8>>;
 }
 
 /// Returns a fixed passphrase (for testing)
 pub struct ConstantPassphraseReader {
-    passphrase: String,
+    passphrase: Vec<u8>,
 }
 
 impl ConstantPassphraseReader {
-    pub fn new(passphrase: String) -> Self {
+    pub fn new(passphrase: Vec<u8>) -> Self {
         Self { passphrase }
     }
 }
 
 impl PassphraseReader for ConstantPassphraseReader {
-    fn read_passphrase(&mut self) -> Result<String> {
+    fn read_passphrase(&mut self) -> Result<Vec<u8>> {
         Ok(self.passphrase.clone())
     }
 }
@@ -38,7 +38,7 @@ impl ReaderPassphraseReader {
 }
 
 impl PassphraseReader for ReaderPassphraseReader {
-    fn read_passphrase(&mut self) -> Result<String> {
+    fn read_passphrase(&mut self) -> Result<Vec<u8>> {
         let mut data = Vec::new();
         self.reader.read_to_end(&mut data).map_err(|e| {
             SaltyboxError::with_kind_and_source(
@@ -48,14 +48,7 @@ impl PassphraseReader for ReaderPassphraseReader {
                 e,
             )
         })?;
-        String::from_utf8(data).map_err(|e| {
-            SaltyboxError::with_kind_and_source(
-                ErrorCategory::User,
-                ErrorKind::PassphraseUnavailable,
-                format!("passphrase is not valid UTF-8: {}", e),
-                e,
-            )
-        })
+        Ok(data)
     }
 }
 /// Reads passphrase from terminal with no echo
@@ -74,7 +67,11 @@ impl Default for TerminalPassphraseReader {
 }
 
 impl PassphraseReader for TerminalPassphraseReader {
-    fn read_passphrase(&mut self) -> Result<String> {
+    /// Read passphrase from terminal.
+    ///
+    /// Note: Terminal input is limited to UTF-8 due to rpassword library constraints.
+    /// For non-UTF-8 passphrases, use --passphrase-stdin instead.
+    fn read_passphrase(&mut self) -> Result<Vec<u8>> {
         if !io::stdin().is_terminal() {
             return Err(SaltyboxError::with_kind(
                 ErrorCategory::User,
@@ -103,6 +100,7 @@ impl PassphraseReader for TerminalPassphraseReader {
         })?;
 
         // Read password *without echo*
+        // Note: rpassword returns String (UTF-8 only)
         let passphrase = rpassword::read_password().map_err(|e| {
             SaltyboxError::with_kind_and_source(
                 ErrorCategory::Internal,
@@ -112,7 +110,7 @@ impl PassphraseReader for TerminalPassphraseReader {
             )
         })?;
 
-        Ok(passphrase)
+        Ok(passphrase.into_bytes())
     }
 }
 
@@ -122,7 +120,7 @@ impl PassphraseReader for TerminalPassphraseReader {
 /// only on the first invocation, and subsequent calls return the cached value.
 pub struct CachingPassphraseReader {
     upstream: Box<dyn PassphraseReader>,
-    cached: Option<String>,
+    cached: Option<Vec<u8>>,
 }
 
 impl CachingPassphraseReader {
@@ -135,7 +133,7 @@ impl CachingPassphraseReader {
 }
 
 impl PassphraseReader for CachingPassphraseReader {
-    fn read_passphrase(&mut self) -> Result<String> {
+    fn read_passphrase(&mut self) -> Result<Vec<u8>> {
         if self.cached.is_none() {
             let passphrase = self.upstream.read_passphrase()?;
             self.cached = Some(passphrase);
@@ -151,9 +149,9 @@ mod tests {
 
     #[test]
     fn test_constant_reader() {
-        let mut reader = ConstantPassphraseReader::new("test123".to_string());
-        assert_eq!(reader.read_passphrase().unwrap(), "test123");
-        assert_eq!(reader.read_passphrase().unwrap(), "test123");
+        let mut reader = ConstantPassphraseReader::new(b"test123".to_vec());
+        assert_eq!(reader.read_passphrase().unwrap(), b"test123");
+        assert_eq!(reader.read_passphrase().unwrap(), b"test123");
     }
 
     /// Tests the terminal reader. This is ignored by default and must be run
@@ -166,7 +164,7 @@ mod tests {
         let mut reader = TerminalPassphraseReader::new();
         println!("\nPlease enter a test passphrase:");
         let passphrase = reader.read_passphrase().unwrap();
-        println!("You entered: {}", passphrase);
+        println!("You entered: {}", String::from_utf8_lossy(&passphrase));
         assert!(!passphrase.is_empty(), "Expected non-empty passphrase");
     }
 
@@ -174,14 +172,24 @@ mod tests {
     fn test_reader_passphrase_reader() {
         let data = b"mypassword";
         let mut reader = ReaderPassphraseReader::new(Box::new(&data[..]));
-        assert_eq!(reader.read_passphrase().unwrap(), "mypassword");
+        assert_eq!(reader.read_passphrase().unwrap(), b"mypassword");
     }
 
     #[test]
     fn test_reader_passphrase_reader_empty() {
         let data = b"";
         let mut reader = ReaderPassphraseReader::new(Box::new(&data[..]));
-        assert_eq!(reader.read_passphrase().unwrap(), "");
+        assert_eq!(reader.read_passphrase().unwrap(), b"");
+    }
+
+    /// Verifies that ReaderPassphraseReader accepts arbitrary byte sequences,
+    /// not just valid UTF-8. This enables --passphrase-stdin to work with
+    /// passphrases containing non-UTF-8 bytes.
+    #[test]
+    fn test_reader_passphrase_reader_non_utf8() {
+        let data: &[u8] = &[0xff, 0xfe, 0x00, 0x01];
+        let mut reader = ReaderPassphraseReader::new(Box::new(data));
+        assert_eq!(reader.read_passphrase().unwrap(), data);
     }
 
     #[test]
@@ -191,12 +199,12 @@ mod tests {
         use std::rc::Rc;
 
         struct CountingReader {
-            passphrase: String,
+            passphrase: Vec<u8>,
             call_count: Rc<RefCell<usize>>,
         }
 
         impl PassphraseReader for CountingReader {
-            fn read_passphrase(&mut self) -> Result<String> {
+            fn read_passphrase(&mut self) -> Result<Vec<u8>> {
                 *self.call_count.borrow_mut() += 1;
                 Ok(self.passphrase.clone())
             }
@@ -204,22 +212,22 @@ mod tests {
 
         let call_count = Rc::new(RefCell::new(0));
         let upstream = CountingReader {
-            passphrase: "cached_pass".to_string(),
+            passphrase: b"cached_pass".to_vec(),
             call_count: call_count.clone(),
         };
 
         let mut caching = CachingPassphraseReader::new(Box::new(upstream));
 
         // First call should invoke upstream
-        assert_eq!(caching.read_passphrase().unwrap(), "cached_pass");
+        assert_eq!(caching.read_passphrase().unwrap(), b"cached_pass");
         assert_eq!(*call_count.borrow(), 1);
 
         // Second call should return cached value without calling upstream
-        assert_eq!(caching.read_passphrase().unwrap(), "cached_pass");
+        assert_eq!(caching.read_passphrase().unwrap(), b"cached_pass");
         assert_eq!(*call_count.borrow(), 1);
 
         // Third call should also use cache
-        assert_eq!(caching.read_passphrase().unwrap(), "cached_pass");
+        assert_eq!(caching.read_passphrase().unwrap(), b"cached_pass");
         assert_eq!(*call_count.borrow(), 1);
     }
 
@@ -229,7 +237,7 @@ mod tests {
         struct FailingReader;
 
         impl PassphraseReader for FailingReader {
-            fn read_passphrase(&mut self) -> Result<String> {
+            fn read_passphrase(&mut self) -> Result<Vec<u8>> {
                 Err(SaltyboxError::with_kind(
                     ErrorCategory::Internal,
                     ErrorKind::PassphraseUnavailable,

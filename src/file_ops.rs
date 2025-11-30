@@ -24,7 +24,7 @@ pub fn encrypt_file(
 ) -> Result<()> {
     let plaintext = fs::read(input_path).map_err(|e| read_error(input_path, e))?;
     let passphrase = passphrase_reader.read_passphrase()?;
-    let ciphertext = secretcrypt::encrypt(passphrase.as_bytes(), &plaintext)
+    let ciphertext = secretcrypt::encrypt(&passphrase, &plaintext)
         .map_err(|e| e.with_context("encryption failed"))?;
     let armored = varmor::wrap(&ciphertext);
     write_file_secure(output_path, armored.as_bytes())
@@ -55,7 +55,7 @@ pub fn decrypt_file(
     })?;
     let passphrase = passphrase_reader.read_passphrase()?;
     let ciphertext = varmor::unwrap(&armored).map_err(|e| e.with_context("failed to unarmor"))?;
-    let plaintext = secretcrypt::decrypt(passphrase.as_bytes(), &ciphertext)
+    let plaintext = secretcrypt::decrypt(&passphrase, &ciphertext)
         .map_err(|e| e.with_context("failed to decrypt"))?;
     write_file_secure(output_path, &plaintext)
         .map_err(|e| e.with_context(format!("failed to write to {}", output_path.display())))?;
@@ -92,7 +92,7 @@ pub fn update_file(
 
     // Validate passphrase by decrypting existing file (discard plaintext)
     let ciphertext = varmor::unwrap(&armored).map_err(|e| e.with_context("failed to unarmor"))?;
-    secretcrypt::decrypt(passphrase.as_bytes(), &ciphertext)
+    secretcrypt::decrypt(&passphrase, &ciphertext)
         .map_err(|e| e.with_context("failed to decrypt"))?;
 
     // Great, let's re-write it (atomically).
@@ -112,7 +112,7 @@ pub fn update_file(
         )
     })?;
     let new_plaintext = fs::read(plain_path).map_err(|e| read_error(plain_path, e))?;
-    let new_ciphertext = secretcrypt::encrypt(passphrase.as_bytes(), &new_plaintext)
+    let new_ciphertext = secretcrypt::encrypt(&passphrase, &new_plaintext)
         .map_err(|e| e.with_context("failed to encrypt"))?;
     let new_armored = varmor::wrap(&new_ciphertext);
 
@@ -262,11 +262,11 @@ mod tests {
         let plaintext = b"Hello, saltybox!";
         fs::write(&plain_path, plaintext).unwrap();
 
-        let mut reader = ConstantPassphraseReader::new("test password".to_string());
+        let mut reader = ConstantPassphraseReader::new(b"test password".to_vec());
         encrypt_file(&plain_path, &crypt_path, &mut reader).unwrap();
         assert!(crypt_path.exists());
 
-        let mut reader = ConstantPassphraseReader::new("test password".to_string());
+        let mut reader = ConstantPassphraseReader::new(b"test password".to_vec());
         decrypt_file(&crypt_path, &decrypted_path, &mut reader).unwrap();
         let decrypted = fs::read(&decrypted_path).unwrap();
         assert_eq!(decrypted, plaintext);
@@ -282,17 +282,17 @@ mod tests {
         let plaintext1 = b"Initial content";
         fs::write(&plain1_path, plaintext1).unwrap();
 
-        let mut reader = ConstantPassphraseReader::new("test password".to_string());
+        let mut reader = ConstantPassphraseReader::new(b"test password".to_vec());
         encrypt_file(&plain1_path, &crypt_path, &mut reader).unwrap();
 
         let plaintext2 = b"Updated content";
         fs::write(&plain2_path, plaintext2).unwrap();
 
-        let mut reader = ConstantPassphraseReader::new("test password".to_string());
+        let mut reader = ConstantPassphraseReader::new(b"test password".to_vec());
         update_file(&plain2_path, &crypt_path, &mut reader).unwrap();
 
         let decrypted_path = temp_dir.path().join("decrypted.txt");
-        let mut reader = ConstantPassphraseReader::new("test password".to_string());
+        let mut reader = ConstantPassphraseReader::new(b"test password".to_vec());
         decrypt_file(&crypt_path, &decrypted_path, &mut reader).unwrap();
 
         let decrypted = fs::read(&decrypted_path).unwrap();
@@ -307,11 +307,11 @@ mod tests {
         let crypt_path = temp_dir.path().join("crypt.txt.saltybox");
 
         fs::write(&plain1_path, b"Initial").unwrap();
-        let mut reader = ConstantPassphraseReader::new("correct password".to_string());
+        let mut reader = ConstantPassphraseReader::new(b"correct password".to_vec());
         encrypt_file(&plain1_path, &crypt_path, &mut reader).unwrap();
 
         fs::write(&plain2_path, b"Updated").unwrap();
-        let mut reader = ConstantPassphraseReader::new("wrong password".to_string());
+        let mut reader = ConstantPassphraseReader::new(b"wrong password".to_vec());
         let result = update_file(&plain2_path, &crypt_path, &mut reader);
 
         let err = result.expect_err("expected authentication failure");
@@ -327,7 +327,7 @@ mod tests {
 
         fs::write(&plain_path, b"test").unwrap();
 
-        let mut reader = ConstantPassphraseReader::new("test".to_string());
+        let mut reader = ConstantPassphraseReader::new(b"test".to_vec());
         encrypt_file(&plain_path, &crypt_path, &mut reader).unwrap();
 
         let metadata = fs::metadata(&crypt_path).unwrap();
@@ -344,10 +344,10 @@ mod tests {
 
         fs::write(&plain_path, b"secret").unwrap();
 
-        let mut reader = ConstantPassphraseReader::new("correct".to_string());
+        let mut reader = ConstantPassphraseReader::new(b"correct".to_vec());
         encrypt_file(&plain_path, &crypt_path, &mut reader).unwrap();
 
-        let mut reader = ConstantPassphraseReader::new("wrong".to_string());
+        let mut reader = ConstantPassphraseReader::new(b"wrong".to_vec());
         let result = decrypt_file(&crypt_path, &decrypted_path, &mut reader);
 
         assert!(result.is_err());
@@ -362,10 +362,10 @@ mod tests {
 
         fs::write(&plain_path, b"").unwrap();
 
-        let mut reader = ConstantPassphraseReader::new("test".to_string());
+        let mut reader = ConstantPassphraseReader::new(b"test".to_vec());
         encrypt_file(&plain_path, &crypt_path, &mut reader).unwrap();
 
-        let mut reader = ConstantPassphraseReader::new("test".to_string());
+        let mut reader = ConstantPassphraseReader::new(b"test".to_vec());
         decrypt_file(&crypt_path, &decrypted_path, &mut reader).unwrap();
 
         let decrypted = fs::read(&decrypted_path).unwrap();
