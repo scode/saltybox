@@ -103,7 +103,13 @@ pub fn encrypt_deterministic(
         )
     })?;
 
-    let sealed_box_len = sealed_box.len() as i64;
+    let sealed_box_len: i64 = sealed_box.len().try_into().map_err(|_| {
+        SaltyboxError::with_kind(
+            ErrorCategory::Internal,
+            ErrorKind::BinaryFormat,
+            "sealed box length exceeds i64 range",
+        )
+    })?;
     let mut output =
         Vec::with_capacity(SALT_LEN + NONCE_LEN + size_of_val(&sealed_box_len) + sealed_box.len());
     output.extend_from_slice(salt);
@@ -156,7 +162,7 @@ pub fn decrypt(passphrase: &[u8], ciphertext: &[u8]) -> Result<Vec<u8>> {
         return Err(SaltyboxError::with_kind(
             ErrorCategory::User,
             ErrorKind::TruncatedInput,
-            "input likely truncated while reading sealed box",
+            "input likely truncated while reading sealed box length",
         ));
     }
     let length_bytes: [u8; 8] =
