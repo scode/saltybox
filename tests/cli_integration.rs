@@ -228,6 +228,65 @@ fn test_update_with_wrong_passphrase_fails() {
 }
 
 #[test]
+fn test_update_identical_input_output_fails() {
+    let temp_dir = TempDir::new().unwrap();
+    let plaintext = temp_dir.path().join("plaintext.txt");
+    let encrypted = temp_dir.path().join("encrypted.txt.salty");
+    let decrypted = temp_dir.path().join("decrypted.txt");
+
+    fs::write(&plaintext, "Original content").unwrap();
+
+    let result = run_saltybox_with_passphrase(
+        &[
+            "encrypt",
+            "-i",
+            plaintext.to_str().unwrap(),
+            "-o",
+            encrypted.to_str().unwrap(),
+        ],
+        "test",
+    )
+    .unwrap();
+    assert!(result.status.success());
+
+    let result = run_saltybox_with_passphrase(
+        &[
+            "update",
+            "-i",
+            encrypted.to_str().unwrap(),
+            "-o",
+            encrypted.to_str().unwrap(),
+        ],
+        "test",
+    )
+    .unwrap();
+
+    assert!(!result.status.success());
+    let stderr = String::from_utf8_lossy(&result.stderr);
+    assert!(
+        stderr.contains("input and output paths must be different for update"),
+        "Expected same-path update rejection, got: {}",
+        stderr
+    );
+
+    let result = run_saltybox_with_passphrase(
+        &[
+            "decrypt",
+            "-i",
+            encrypted.to_str().unwrap(),
+            "-o",
+            decrypted.to_str().unwrap(),
+        ],
+        "test",
+    )
+    .unwrap();
+    assert!(result.status.success());
+
+    let decrypted_content = fs::read_to_string(&decrypted).unwrap();
+    assert_eq!(decrypted_content, "Original content");
+}
+
+#[test]
 fn test_decrypt_nonexistent_file_fails() {
     let temp_dir = TempDir::new().unwrap();
     let nonexistent = temp_dir.path().join("nonexistent.salty");
