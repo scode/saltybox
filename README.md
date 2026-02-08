@@ -78,6 +78,9 @@ saltybox update -i allmysecrets-updated.txt -o allmysecrets.txt.saltybox
 * Files must fit comfortably in memory and there is no support for encrypting a stream in an incremental fashion.
 * There is no attempt to lock the passphrase or derived key into memory. The passphrase may be paged to disk by
   the operating system. You are responsible for the security of the device on which you run this program.
+* File writes use atomic same-directory temporary files named `.saltybox-*.tmp`.
+  On Unix, these temporary files are written with mode `0600` and then atomically renamed into place.
+  In the event of a crash, stale `.saltybox-*.tmp` files may remain and should still be private (`0600`).
 * The format is based upon well known algorithms with exceedingly
   simple layering on top. scrypt is used for key stretching, nacl is
   used for encryption, and a base64 variant is used for encoding.
