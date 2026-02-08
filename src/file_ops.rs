@@ -84,6 +84,15 @@ pub fn update_file(
     crypt_path: &Path,
     passphrase_reader: &mut dyn PassphraseReader,
 ) -> Result<()> {
+    // Prevent treating the existing ciphertext as new plaintext when paths alias.
+    if update_paths_conflict(plain_path, crypt_path) {
+        return Err(SaltyboxError::with_kind(
+            ErrorCategory::User,
+            ErrorKind::Io,
+            "input and output paths must be different for update",
+        ));
+    }
+
     let armored_bytes = fs::read(crypt_path).map_err(|e| read_error(crypt_path, e))?;
     let armored = String::from_utf8(armored_bytes).map_err(|e| {
         SaltyboxError::with_kind_and_source(
@@ -194,6 +203,17 @@ pub fn update_file(
     Ok(())
 }
 
+fn update_paths_conflict(plain_path: &Path, crypt_path: &Path) -> bool {
+    if plain_path == crypt_path {
+        return true;
+    }
+
+    match (fs::canonicalize(plain_path), fs::canonicalize(crypt_path)) {
+        (Ok(canonical_plain), Ok(canonical_crypt)) => canonical_plain == canonical_crypt,
+        _ => false,
+    }
+}
+
 /// Write file with secure permissions (0o600 on Unix)
 fn write_file_secure(path: &Path, contents: &[u8]) -> Result<()> {
     let output_dir = path.parent().ok_or_else(|| {
@@ -292,7 +312,7 @@ fn read_error(path: &Path, err: io::Error) -> SaltyboxError {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::error::ErrorKind;
+    use crate::error::{ErrorCategory, ErrorKind};
     use crate::passphrase::ConstantPassphraseReader;
     use std::fs;
     use tempfile::TempDir;
@@ -345,6 +365,70 @@ mod tests {
 
         let decrypted = fs::read(&decrypted_path).unwrap();
         assert_eq!(decrypted, plaintext2);
+    }
+
+    #[test]
+    fn test_update_rejects_identical_input_output_path() {
+        let temp_dir = TempDir::new().unwrap();
+        let plain_path = temp_dir.path().join("plain.txt");
+        let crypt_path = temp_dir.path().join("crypt.txt.saltybox");
+
+        let original = b"Initial content";
+        fs::write(&plain_path, original).unwrap();
+
+        let mut reader = ConstantPassphraseReader::new(b"test password".to_vec());
+        encrypt_file(&plain_path, &crypt_path, &mut reader).unwrap();
+
+        let mut reader = ConstantPassphraseReader::new(b"test password".to_vec());
+        let result = update_file(&crypt_path, &crypt_path, &mut reader);
+
+        let err = result.expect_err("expected path conflict failure");
+        assert_eq!(err.category, ErrorCategory::User);
+        assert_eq!(err.kind, Some(ErrorKind::Io));
+        assert_eq!(
+            err.message(),
+            "input and output paths must be different for update"
+        );
+
+        let decrypted_path = temp_dir.path().join("decrypted.txt");
+        let mut reader = ConstantPassphraseReader::new(b"test password".to_vec());
+        decrypt_file(&crypt_path, &decrypted_path, &mut reader).unwrap();
+        let decrypted = fs::read(&decrypted_path).unwrap();
+        assert_eq!(decrypted, original);
+    }
+
+    #[test]
+    fn test_update_rejects_canonical_alias_of_output_path() {
+        let temp_dir = TempDir::new().unwrap();
+        let plain_path = temp_dir.path().join("plain.txt");
+        let crypt_path = temp_dir.path().join("crypt.txt.saltybox");
+        let alias_dir = temp_dir.path().join("alias");
+        let alias_path = alias_dir.join("..").join("crypt.txt.saltybox");
+
+        let original = b"Initial content";
+        fs::write(&plain_path, original).unwrap();
+
+        let mut reader = ConstantPassphraseReader::new(b"test password".to_vec());
+        encrypt_file(&plain_path, &crypt_path, &mut reader).unwrap();
+
+        fs::create_dir(&alias_dir).unwrap();
+
+        let mut reader = ConstantPassphraseReader::new(b"test password".to_vec());
+        let result = update_file(&alias_path, &crypt_path, &mut reader);
+
+        let err = result.expect_err("expected canonical path conflict failure");
+        assert_eq!(err.category, ErrorCategory::User);
+        assert_eq!(err.kind, Some(ErrorKind::Io));
+        assert_eq!(
+            err.message(),
+            "input and output paths must be different for update"
+        );
+
+        let decrypted_path = temp_dir.path().join("decrypted.txt");
+        let mut reader = ConstantPassphraseReader::new(b"test password".to_vec());
+        decrypt_file(&crypt_path, &decrypted_path, &mut reader).unwrap();
+        let decrypted = fs::read(&decrypted_path).unwrap();
+        assert_eq!(decrypted, original);
     }
 
     #[test]

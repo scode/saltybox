@@ -73,6 +73,9 @@ ensures the passphrase is not accidentally changed:
 saltybox update -i allmysecrets-updated.txt -o allmysecrets.txt.saltybox
 ```
 
+`update` requires `-i` and `-o` to reference different files. Using the
+same file (or a path alias that resolves to the same file) is rejected.
+
 # Features and limitations
 
 * Files must fit comfortably in memory and there is no support for encrypting a stream in an incremental fashion.
