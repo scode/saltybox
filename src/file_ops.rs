@@ -11,12 +11,16 @@ use std::fs;
 use std::io::{self, Write};
 use std::path::Path;
 
+const TEMPFILE_PREFIX: &str = ".saltybox-";
+const TEMPFILE_SUFFIX: &str = ".tmp";
+
 /// Encrypt a file with a passphrase
 ///
 /// Reads plaintext from `input_path`, encrypts it using a passphrase from
 /// `passphrase_reader`, and writes the armored ciphertext to `output_path`.
 ///
-/// The output file is created with mode 0o600 (read/write for owner only) on Unix systems.
+/// Output is written atomically via a same-directory temporary file.
+/// On Unix systems, the final file mode is set to 0o600 (read/write for owner only).
 pub fn encrypt_file(
     input_path: &Path,
     output_path: &Path,
@@ -38,7 +42,8 @@ pub fn encrypt_file(
 /// Reads armored ciphertext from `input_path`, decrypts it using a passphrase from
 /// `passphrase_reader`, and writes the plaintext to `output_path`.
 ///
-/// The output file is created with mode 0o600 (read/write for owner only) on Unix systems.
+/// Output is written atomically via a same-directory temporary file.
+/// On Unix systems, the final file mode is set to 0o600 (read/write for owner only).
 pub fn decrypt_file(
     input_path: &Path,
     output_path: &Path,
@@ -103,14 +108,18 @@ pub fn update_file(
             "crypt_path has no parent directory",
         )
     })?;
-    let mut temp_file = tempfile::NamedTempFile::new_in(crypt_dir).map_err(|e| {
-        SaltyboxError::with_kind_and_source(
-            ErrorCategory::Internal,
-            ErrorKind::Io,
-            "failed to create tempfile",
-            e,
-        )
-    })?;
+    let mut temp_file = tempfile::Builder::new()
+        .prefix(TEMPFILE_PREFIX)
+        .suffix(TEMPFILE_SUFFIX)
+        .tempfile_in(crypt_dir)
+        .map_err(|e| {
+            SaltyboxError::with_kind_and_source(
+                ErrorCategory::Internal,
+                ErrorKind::Io,
+                "failed to create tempfile",
+                e,
+            )
+        })?;
     let new_plaintext = fs::read(plain_path).map_err(|e| read_error(plain_path, e))?;
     let new_ciphertext = secretcrypt::encrypt(&passphrase, &new_plaintext)
         .map_err(|e| e.with_context("failed to encrypt"))?;
@@ -170,10 +179,15 @@ pub fn update_file(
         })?;
     }
     temp_file.persist(crypt_path).map_err(|e| {
+        let tempfile_path = e.file.path().display().to_string();
         SaltyboxError::with_kind_and_source(
             ErrorCategory::Internal,
             ErrorKind::Io,
-            format!("failed to rename to target file {}", crypt_path.display()),
+            format!(
+                "failed to rename to target file {}; tempfile may still exist at {} and may need manual removal",
+                crypt_path.display(),
+                tempfile_path
+            ),
             e,
         )
     })?;
@@ -182,49 +196,83 @@ pub fn update_file(
 
 /// Write file with secure permissions (0o600 on Unix)
 fn write_file_secure(path: &Path, contents: &[u8]) -> Result<()> {
-    #[cfg(unix)]
-    {
-        use std::fs::OpenOptions;
-        use std::os::unix::fs::OpenOptionsExt;
-
-        let mut file = OpenOptions::new()
-            .write(true)
-            .create(true)
-            .truncate(true)
-            .mode(0o600)
-            .open(path)
-            .map_err(|e| {
-                SaltyboxError::with_kind_and_source(
-                    ErrorCategory::User,
-                    ErrorKind::Io,
-                    format!("failed to open {}", path.display()),
-                    e,
-                )
-            })?;
-
-        file.write_all(contents).map_err(|e| {
-            SaltyboxError::with_kind_and_source(
-                ErrorCategory::Internal,
-                ErrorKind::Io,
-                format!("failed to write {}", path.display()),
-                e,
-            )
-        })?;
-        Ok(())
-    }
-
-    #[cfg(not(unix))]
-    {
-        fs::write(path, contents).map_err(|e| {
+    let output_dir = path.parent().ok_or_else(|| {
+        SaltyboxError::with_kind(
+            ErrorCategory::User,
+            ErrorKind::Io,
+            "output path has no parent directory",
+        )
+    })?;
+    let mut temp_file = tempfile::Builder::new()
+        .prefix(TEMPFILE_PREFIX)
+        .suffix(TEMPFILE_SUFFIX)
+        .tempfile_in(output_dir)
+        .map_err(|e| {
             SaltyboxError::with_kind_and_source(
                 ErrorCategory::User,
                 ErrorKind::Io,
-                format!("failed to write {}", path.display()),
+                format!("failed to open {}", path.display()),
                 e,
             )
         })?;
-        Ok(())
+
+    temp_file.write_all(contents).map_err(|e| {
+        SaltyboxError::with_kind_and_source(
+            ErrorCategory::Internal,
+            ErrorKind::Io,
+            format!("failed to write {}", path.display()),
+            e,
+        )
+    })?;
+    // Ensure persisted rename always points to fully written data.
+    temp_file.flush().map_err(|e| {
+        SaltyboxError::with_kind_and_source(
+            ErrorCategory::Internal,
+            ErrorKind::Io,
+            format!("failed to flush {}", path.display()),
+            e,
+        )
+    })?;
+    temp_file.as_file().sync_all().map_err(|e| {
+        SaltyboxError::with_kind_and_source(
+            ErrorCategory::Internal,
+            ErrorKind::Io,
+            format!("failed to sync {}", path.display()),
+            e,
+        )
+    })?;
+
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+
+        temp_file
+            .as_file()
+            .set_permissions(fs::Permissions::from_mode(0o600))
+            .map_err(|e| {
+                SaltyboxError::with_kind_and_source(
+                    ErrorCategory::Internal,
+                    ErrorKind::Io,
+                    "failed to set tempfile permissions",
+                    e,
+                )
+            })?;
     }
+
+    temp_file.persist(path).map_err(|e| {
+        let tempfile_path = e.file.path().display().to_string();
+        SaltyboxError::with_kind_and_source(
+            ErrorCategory::Internal,
+            ErrorKind::Io,
+            format!(
+                "failed to rename to target file {}; tempfile may still exist at {} and may need manual removal",
+                path.display(),
+                tempfile_path
+            ),
+            e,
+        )
+    })?;
+    Ok(())
 }
 
 fn read_error(path: &Path, err: io::Error) -> SaltyboxError {
@@ -331,6 +379,53 @@ mod tests {
         encrypt_file(&plain_path, &crypt_path, &mut reader).unwrap();
 
         let metadata = fs::metadata(&crypt_path).unwrap();
+        let permissions = metadata.permissions();
+        assert_eq!(permissions.mode() & 0o777, 0o600);
+    }
+
+    #[test]
+    #[cfg(unix)]
+    fn test_encrypt_overwrites_insecure_output_permissions() {
+        let temp_dir = TempDir::new().unwrap();
+        let plain_path = temp_dir.path().join("plain.txt");
+        let crypt_path = temp_dir.path().join("crypt.txt.saltybox");
+
+        fs::write(&plain_path, b"secret").unwrap();
+        fs::write(&crypt_path, b"existing ciphertext").unwrap();
+        let mut permissions = fs::metadata(&crypt_path).unwrap().permissions();
+        permissions.set_mode(0o644);
+        fs::set_permissions(&crypt_path, permissions).unwrap();
+
+        let mut reader = ConstantPassphraseReader::new(b"test".to_vec());
+        encrypt_file(&plain_path, &crypt_path, &mut reader).unwrap();
+
+        let metadata = fs::metadata(&crypt_path).unwrap();
+        let permissions = metadata.permissions();
+        assert_eq!(permissions.mode() & 0o777, 0o600);
+    }
+
+    #[test]
+    #[cfg(unix)]
+    fn test_decrypt_overwrites_insecure_output_permissions() {
+        let temp_dir = TempDir::new().unwrap();
+        let plain_path = temp_dir.path().join("plain.txt");
+        let crypt_path = temp_dir.path().join("crypt.txt.saltybox");
+        let decrypted_path = temp_dir.path().join("decrypted.txt");
+
+        fs::write(&plain_path, b"secret").unwrap();
+
+        let mut reader = ConstantPassphraseReader::new(b"test".to_vec());
+        encrypt_file(&plain_path, &crypt_path, &mut reader).unwrap();
+
+        fs::write(&decrypted_path, b"old plaintext").unwrap();
+        let mut permissions = fs::metadata(&decrypted_path).unwrap().permissions();
+        permissions.set_mode(0o644);
+        fs::set_permissions(&decrypted_path, permissions).unwrap();
+
+        let mut reader = ConstantPassphraseReader::new(b"test".to_vec());
+        decrypt_file(&crypt_path, &decrypted_path, &mut reader).unwrap();
+
+        let metadata = fs::metadata(&decrypted_path).unwrap();
         let permissions = metadata.permissions();
         assert_eq!(permissions.mode() & 0o777, 0o600);
     }
