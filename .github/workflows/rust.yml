@@ -5,8 +5,47 @@ on:
       - main
   pull_request:
 jobs:
-  rust:
-    name: rust / build+test+fmt+clippy
+  rust-build:
+    name: rust / build
+    runs-on: ubuntu-latest
+    steps:
+      - name: checkout code
+        uses: actions/checkout@v4
+
+      - name: setup rust
+        uses: actions-rust-lang/setup-rust-toolchain@v1
+
+      - name: cargo build
+        run: cargo build --verbose
+
+  rust-test:
+    name: rust / test
+    runs-on: ubuntu-latest
+    steps:
+      - name: checkout code
+        uses: actions/checkout@v4
+
+      - name: setup rust
+        uses: actions-rust-lang/setup-rust-toolchain@v1
+
+      - name: cargo test
+        run: cargo test --verbose
+
+  rust-golden-vectors:
+    name: rust / golden vectors
+    runs-on: ubuntu-latest
+    steps:
+      - name: checkout code
+        uses: actions/checkout@v4
+
+      - name: setup rust
+        uses: actions-rust-lang/setup-rust-toolchain@v1
+
+      - name: cargo test (all golden vectors)
+        run: cargo test --verbose --test golden_vectors -- --ignored
+
+  rust-fmt:
+    name: rust / fmt
     runs-on: ubuntu-latest
     steps:
       - name: checkout code
@@ -15,19 +54,22 @@ jobs:
       - name: setup rust
         uses: actions-rust-lang/setup-rust-toolchain@v1
         with:
-          components: rustfmt, clippy
-
-      - name: cargo build
-        run: cargo build --verbose
-
-      - name: cargo test
-        run: cargo test --verbose
-
-      - name: cargo test (all golden vectors)
-        run: cargo test --test golden_vectors -- --ignored
+          components: rustfmt
 
       - name: cargo fmt check
         run: cargo fmt --all -- --check
+
+  rust-clippy:
+    name: rust / clippy
+    runs-on: ubuntu-latest
+    steps:
+      - name: checkout code
+        uses: actions/checkout@v4
+
+      - name: setup rust
+        uses: actions-rust-lang/setup-rust-toolchain@v1
+        with:
+          components: clippy
 
       - name: cargo clippy
         run: cargo clippy --all-targets --all-features -- -D warnings
