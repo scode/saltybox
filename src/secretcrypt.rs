@@ -13,8 +13,8 @@
 use crate::error::{ErrorCategory, ErrorKind, Result, SaltyboxError};
 use crypto_secretbox::aead::{Aead, KeyInit};
 use crypto_secretbox::{Nonce, XSalsa20Poly1305};
-use rand::RngCore;
-use rand::rngs::OsRng;
+use rand::TryRng;
+use rand::rngs::SysRng;
 use scrypt::{Params, scrypt};
 use std::mem::{size_of, size_of_val};
 use zeroize::Zeroizing;
@@ -67,15 +67,21 @@ fn derive_key(passphrase: &[u8], salt: &[u8; SALT_LEN]) -> Result<Zeroizing<[u8;
     Ok(key)
 }
 
+/// Generate a random byte array and normalize RNG failures into SaltyboxError.
+fn fill_random_bytes<const N: usize>(error_msg: &'static str) -> Result<[u8; N]> {
+    let mut bytes = [0u8; N];
+    SysRng.try_fill_bytes(&mut bytes).map_err(|e| {
+        SaltyboxError::with_kind_and_source(ErrorCategory::Internal, ErrorKind::Io, error_msg, e)
+    })?;
+    Ok(bytes)
+}
+
 /// Encrypt plaintext with a passphrase using random salt and nonce
 ///
 /// Returns the binary format: salt(8) + nonce(24) + length(8) + sealedbox(variable)
 pub fn encrypt(passphrase: &[u8], plaintext: &[u8]) -> Result<Vec<u8>> {
-    let mut salt = [0u8; SALT_LEN];
-    OsRng.fill_bytes(&mut salt);
-
-    let mut nonce = [0u8; NONCE_LEN];
-    OsRng.fill_bytes(&mut nonce);
+    let salt = fill_random_bytes::<SALT_LEN>("failed to generate random salt")?;
+    let nonce = fill_random_bytes::<NONCE_LEN>("failed to generate random nonce")?;
 
     encrypt_deterministic(passphrase, plaintext, &salt, &nonce)
 }
