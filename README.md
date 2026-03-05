@@ -5,6 +5,8 @@
 - [Introduction](#introduction)
 - [Requirements](#requirements)
 - [Installation](#installation)
+  - [Homebrew](#homebrew)
+  - [From source](#from-source)
 - [Usage](#usage)
 - [Features and limitations](#features-and-limitations)
 - [Guidance for use](#guidance-for-use)
@@ -33,6 +35,14 @@ Its primary intended use-case is for encrypting small amounts of personal data f
 * Rust 1.85 or later is required to be [installed](https://www.rust-lang.org/tools/install).
 
 # Installation
+
+## Homebrew
+
+```
+brew install scode/dist-tap/saltybox
+```
+
+## From source
 
 ```
  $ cargo install --path .
