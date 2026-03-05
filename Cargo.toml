@@ -1,6 +1,6 @@
 [package]
 name = "saltybox"
-version = "3.1.0"
+version = "3.2.0"
 edition = "2024"
 rust-version = "1.85"  # Rust 2024 edition requires 1.85+
 authors = ["saltybox contributors"]
