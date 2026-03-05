@@ -1,28 +1,28 @@
 [package]
 name = "saltybox"
 version = "3.2.0"
-edition = "2024"
-rust-version = "1.85"  # Rust 2024 edition requires 1.85+
 authors = ["saltybox contributors"]
-description = "Passphrase-based file encryption tool using NaCl secretbox"
+default-run = "saltybox"
+edition = "2024"
+homepage = "https://github.com/scode/saltybox"
 license = "Apache-2.0 OR MIT"
 repository = "https://github.com/scode/saltybox"
-homepage = "https://github.com/scode/saltybox"
-default-run = "saltybox"
+rust-version = "1.85" # Rust 2024 edition requires 1.85+
+description = "Passphrase-based file encryption tool using NaCl secretbox"
 
 [[bin]]
 name = "saltybox"
 path = "src/bin/saltybox.rs"
 
 [dependencies]
-thiserror = "2.0"
-scrypt = "0.11"
+base64 = "0.22"
+clap = { version = "4.5", features = ["derive"] }
 crypto_secretbox = "0.1"
 rand = "0.10"
-base64 = "0.22"
 rpassword = "7.4"
+scrypt = "0.11"
 tempfile = "3.25"
-clap = { version = "4.5", features = ["derive"] }
+thiserror = "2.0"
 zeroize = "1.8"
 
 [dev-dependencies]
