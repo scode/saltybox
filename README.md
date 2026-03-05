@@ -5,10 +5,6 @@ Saltybox is a tool for encrypting files with a passphrase.
 Its primary intended use-case is for encrypting small amounts of personal data for safe keeping on untrusted media
 (physical or otherwise).
 
-# Requirements
-
-* Rust 1.85 or later is required to be [installed](https://www.rust-lang.org/tools/install).
-
 # Installation
 
 ## Homebrew
@@ -18,6 +14,8 @@ brew install scode/dist-tap/saltybox
 ```
 
 ## From source
+
+Requires [Rust](https://rust-lang.org/tools/install/).
 
 ```
  $ cargo install --path .
