@@ -1,28 +1,3 @@
-<!-- START doctoc generated TOC please keep comment here to allow auto update -->
-<!-- DON'T EDIT THIS SECTION, INSTEAD RE-RUN doctoc TO UPDATE -->
-**Table of Contents**  *generated with [DocToc](https://github.com/thlorenz/doctoc)*
-
-- [Introduction](#introduction)
-- [Requirements](#requirements)
-- [Installation](#installation)
-  - [Homebrew](#homebrew)
-  - [From source](#from-source)
-- [Usage](#usage)
-- [Features and limitations](#features-and-limitations)
-- [Guidance for use](#guidance-for-use)
-  - [Use `update` whenever possible](#use-update-whenever-possible)
-  - [Keep a copy of saltybox](#keep-a-copy-of-saltybox)
-- [Format/API contract](#formatapi-contract)
-- [Important crypto disclaimer](#important-crypto-disclaimer)
-- [Details: Encrypted File Format (saltybox format version 1)](#details-encrypted-file-format-saltybox-format-version-1)
-  - [Armored (Text) Format](#armored-text-format)
-  - [Binary Format](#binary-format)
-- [Golden Test Vectors](#golden-test-vectors)
-  - [Usage](#usage-1)
-  - [Golden Vectors Format](#golden-vectors-format)
-
-<!-- END doctoc generated TOC please keep comment here to allow auto update -->
-
 # Introduction
 
 Saltybox is a tool for encrypting files with a passphrase.

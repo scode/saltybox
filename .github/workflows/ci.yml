@@ -89,14 +89,3 @@ jobs:
           cache: true
       - run: cargo test --verbose --test golden_vectors -- --ignored
 
-  doctoc:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v5
-      - uses: actions/setup-node@v4
-        with:
-          node-version: '20'
-      - run: npm install -g doctoc
-      - run: doctoc README.md
-      - name: Verify no changes
-        run: git diff --exit-code README.md
