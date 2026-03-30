@@ -109,97 +109,11 @@ pub fn update_file(
     secretcrypt::decrypt(&passphrase, &ciphertext)
         .map_err(|e| e.with_context("failed to decrypt"))?;
 
-    // Great, let's re-write it (atomically).
-    let crypt_dir = crypt_path.parent().ok_or_else(|| {
-        SaltyboxError::with_kind(
-            ErrorCategory::User,
-            ErrorKind::Io,
-            "crypt_path has no parent directory",
-        )
-    })?;
-    let mut temp_file = tempfile::Builder::new()
-        .prefix(TEMPFILE_PREFIX)
-        .suffix(TEMPFILE_SUFFIX)
-        .tempfile_in(crypt_dir)
-        .map_err(|e| {
-            SaltyboxError::with_kind_and_source(
-                ErrorCategory::Internal,
-                ErrorKind::Io,
-                "failed to create tempfile",
-                e,
-            )
-        })?;
     let new_plaintext = fs::read(plain_path).map_err(|e| read_error(plain_path, e))?;
     let new_ciphertext = secretcrypt::encrypt(&passphrase, &new_plaintext)
         .map_err(|e| e.with_context("failed to encrypt"))?;
     let new_armored = varmor::wrap(&new_ciphertext);
-
-    temp_file.write_all(new_armored.as_bytes()).map_err(|e| {
-        SaltyboxError::with_kind_and_source(
-            ErrorCategory::Internal,
-            ErrorKind::Io,
-            "failed to write to tempfile",
-            e,
-        )
-    })?;
-    // Flush and fsync() such that the rename later, if it succeeds, will
-    // always point to a valid file.
-    temp_file.flush().map_err(|e| {
-        SaltyboxError::with_kind_and_source(
-            ErrorCategory::Internal,
-            ErrorKind::Io,
-            "failed to flush tempfile",
-            e,
-        )
-    })?;
-    temp_file.as_file().sync_all().map_err(|e| {
-        SaltyboxError::with_kind_and_source(
-            ErrorCategory::Internal,
-            ErrorKind::Io,
-            "failed to sync file prior to rename",
-            e,
-        )
-    })?;
-
-    // Atomically rename temp file to target (persist with restrictive permissions)
-    #[cfg(unix)]
-    {
-        use std::os::unix::fs::PermissionsExt;
-        let mut perms = temp_file
-            .as_file()
-            .metadata()
-            .map_err(|e| {
-                SaltyboxError::with_kind_and_source(
-                    ErrorCategory::Internal,
-                    ErrorKind::Io,
-                    "failed to get tempfile metadata",
-                    e,
-                )
-            })?
-            .permissions();
-        perms.set_mode(0o600);
-        temp_file.as_file().set_permissions(perms).map_err(|e| {
-            SaltyboxError::with_kind_and_source(
-                ErrorCategory::Internal,
-                ErrorKind::Io,
-                "failed to set tempfile permissions",
-                e,
-            )
-        })?;
-    }
-    temp_file.persist(crypt_path).map_err(|e| {
-        let tempfile_path = e.file.path().display().to_string();
-        SaltyboxError::with_kind_and_source(
-            ErrorCategory::Internal,
-            ErrorKind::Io,
-            format!(
-                "failed to rename to target file {}; tempfile may still exist at {} and may need manual removal",
-                crypt_path.display(),
-                tempfile_path
-            ),
-            e,
-        )
-    })?;
+    write_file_secure(crypt_path, new_armored.as_bytes())?;
     Ok(())
 }
 
@@ -229,9 +143,9 @@ fn write_file_secure(path: &Path, contents: &[u8]) -> Result<()> {
         .tempfile_in(output_dir)
         .map_err(|e| {
             SaltyboxError::with_kind_and_source(
-                ErrorCategory::User,
+                ErrorCategory::Internal,
                 ErrorKind::Io,
-                format!("failed to open {}", path.display()),
+                format!("failed to create tempfile for {}", path.display()),
                 e,
             )
         })?;
