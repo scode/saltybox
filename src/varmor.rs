@@ -25,14 +25,6 @@ pub fn wrap(body: &[u8]) -> String {
 
 /// Unwrap an armored string, returning the original bytes
 pub fn unwrap(armored: &str) -> Result<Vec<u8>> {
-    if armored.len() < V1_MAGIC.len() {
-        return Err(SaltyboxError::with_kind(
-            ErrorCategory::User,
-            ErrorKind::ArmoringInvalid,
-            "input size smaller than magic marker; likely truncated",
-        ));
-    }
-
     if let Some(encoded) = armored.strip_prefix(V1_MAGIC) {
         let body = URL_SAFE_NO_PAD.decode(encoded).map_err(|e| {
             SaltyboxError::with_kind_and_source(
