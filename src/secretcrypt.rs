@@ -40,7 +40,7 @@ const SCRYPT_P: u32 = 1;
 /// Derive a 32-byte key from a passphrase and salt using scrypt
 fn derive_key(passphrase: &[u8], salt: &[u8; SALT_LEN]) -> Result<Zeroizing<[u8; KEY_LEN]>> {
     let params = Params::new(
-        (SCRYPT_N as f64).log2() as u8, // log_n
+        SCRYPT_N.trailing_zeros() as u8, // log_n
         SCRYPT_R,
         SCRYPT_P,
         KEY_LEN,
