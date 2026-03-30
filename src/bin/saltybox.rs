@@ -67,17 +67,15 @@ enum Commands {
 fn main() {
     let cli = Cli::parse();
 
+    let mut reader = get_passphrase_reader(cli.passphrase_stdin);
     let result = match cli.command {
         Commands::Encrypt { input, output } => {
-            let mut reader = get_passphrase_reader(cli.passphrase_stdin);
             file_ops::encrypt_file(&input, &output, &mut *reader)
         }
         Commands::Decrypt { input, output } => {
-            let mut reader = get_passphrase_reader(cli.passphrase_stdin);
             file_ops::decrypt_file(&input, &output, &mut *reader)
         }
         Commands::Update { input, output } => {
-            let mut reader = get_passphrase_reader(cli.passphrase_stdin);
             file_ops::update_file(&input, &output, &mut *reader)
         }
     };
