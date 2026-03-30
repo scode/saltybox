@@ -146,8 +146,8 @@ impl PassphraseReader for CachingPassphraseReader {
             let passphrase = self.upstream.read_passphrase()?;
             self.cached = Some(passphrase);
         }
-        let inner: &Vec<u8> = self.cached.as_ref().unwrap();
-        Ok(Zeroizing::new(inner.clone()))
+        let cached = self.cached.as_ref().unwrap();
+        Ok(Zeroizing::new(cached.to_vec()))
     }
 }
 
