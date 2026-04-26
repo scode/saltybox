@@ -450,6 +450,25 @@ mod tests {
         let result = decrypt_file(&crypt_path, &decrypted_path, &mut reader);
 
         assert!(result.is_err());
+        assert!(!decrypted_path.exists());
+    }
+
+    #[test]
+    fn test_decrypt_wrong_passphrase_preserves_existing_output() {
+        let temp_dir = TempDir::new().unwrap();
+        let plain_path = temp_dir.path().join("plain.txt");
+        let crypt_path = temp_dir.path().join("crypt.txt.saltybox");
+        let decrypted_path = temp_dir.path().join("decrypted.txt");
+
+        fs::write(&plain_path, b"secret").unwrap();
+        fs::write(&decrypted_path, b"old plaintext").unwrap();
+
+        let mut reader = ConstantPassphraseReader::new(b"correct".to_vec());
+        encrypt_file(&plain_path, &crypt_path, &mut reader).unwrap();
+
+        let mut reader = ConstantPassphraseReader::new(b"wrong".to_vec());
+        assert!(decrypt_file(&crypt_path, &decrypted_path, &mut reader).is_err());
+        assert_eq!(fs::read(&decrypted_path).unwrap(), b"old plaintext");
     }
 
     #[test]
