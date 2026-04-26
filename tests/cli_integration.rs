@@ -225,6 +225,27 @@ fn test_update_with_wrong_passphrase_fails() {
         "Expected error message about decryption/passphrase, got: {}",
         stderr
     );
+
+    let decrypted = temp_dir.path().join("decrypted.txt");
+    let result = run_saltybox_with_passphrase(
+        &[
+            "decrypt",
+            "-i",
+            encrypted.to_str().unwrap(),
+            "-o",
+            decrypted.to_str().unwrap(),
+        ],
+        "correct_password",
+    )
+    .unwrap();
+    assert!(
+        result.status.success(),
+        "decrypt after failed update failed: {}",
+        String::from_utf8_lossy(&result.stderr)
+    );
+
+    let decrypted_content = fs::read_to_string(&decrypted).unwrap();
+    assert_eq!(decrypted_content, "Original");
 }
 
 #[test]
