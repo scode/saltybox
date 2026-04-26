@@ -362,6 +362,12 @@ mod tests {
 
         let err = result.expect_err("expected authentication failure");
         assert_eq!(err.kind, Some(ErrorKind::AuthenticationFailed));
+
+        let decrypted_path = temp_dir.path().join("decrypted.txt");
+        let mut reader = ConstantPassphraseReader::new(b"correct password".to_vec());
+        decrypt_file(&crypt_path, &decrypted_path, &mut reader).unwrap();
+        let decrypted = fs::read(&decrypted_path).unwrap();
+        assert_eq!(decrypted, b"Initial");
     }
 
     #[test]
