@@ -236,6 +236,78 @@ fn test_update_operation() {
 }
 
 #[test]
+fn test_command_aliases() {
+    let temp_dir = TempDir::new().unwrap();
+    let plaintext = temp_dir.path().join("plaintext.txt");
+    let encrypted = temp_dir.path().join("encrypted.txt.salty");
+    let decrypted = temp_dir.path().join("decrypted.txt");
+
+    fs::write(&plaintext, "Original content").unwrap();
+
+    let result = run_saltybox_with_passphrase(
+        &[
+            "e",
+            "-i",
+            plaintext.to_str().unwrap(),
+            "-o",
+            encrypted.to_str().unwrap(),
+        ],
+        "test",
+    )
+    .unwrap();
+    assert!(
+        result.status.success(),
+        "encrypt alias failed: {}",
+        String::from_utf8_lossy(&result.stderr)
+    );
+
+    fs::write(&plaintext, "Updated content").unwrap();
+
+    let update_args = [
+        "u",
+        "-i",
+        plaintext.to_str().unwrap(),
+        "-o",
+        encrypted.to_str().unwrap(),
+    ];
+
+    let result = run_saltybox_with_passphrase(&update_args, "wrong").unwrap();
+    assert!(!result.status.success());
+
+    let decrypt_args = [
+        "d",
+        "-i",
+        encrypted.to_str().unwrap(),
+        "-o",
+        decrypted.to_str().unwrap(),
+    ];
+
+    let result = run_saltybox_with_passphrase(&decrypt_args, "test").unwrap();
+    assert!(
+        result.status.success(),
+        "decrypt alias after failed update alias failed: {}",
+        String::from_utf8_lossy(&result.stderr)
+    );
+    assert_eq!(fs::read_to_string(&decrypted).unwrap(), "Original content");
+
+    let result = run_saltybox_with_passphrase(&update_args, "test").unwrap();
+    assert!(
+        result.status.success(),
+        "update alias failed: {}",
+        String::from_utf8_lossy(&result.stderr)
+    );
+
+    let result = run_saltybox_with_passphrase(&decrypt_args, "test").unwrap();
+    assert!(
+        result.status.success(),
+        "decrypt alias failed: {}",
+        String::from_utf8_lossy(&result.stderr)
+    );
+
+    assert_eq!(fs::read_to_string(&decrypted).unwrap(), "Updated content");
+}
+
+#[test]
 fn test_update_with_wrong_passphrase_fails() {
     let temp_dir = TempDir::new().unwrap();
     let plaintext1 = temp_dir.path().join("plaintext1.txt");
