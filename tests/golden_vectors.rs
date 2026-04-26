@@ -13,18 +13,14 @@ struct GoldenVector {
     comment: String,
 }
 
-fn load_golden_vectors() -> serde_json::Result<Vec<GoldenVector>> {
-    let json_data = include_str!("../testdata/golden-vectors.json");
-    let vectors: Vec<GoldenVector> = serde_json::from_str(json_data)?;
-    Ok(vectors)
-}
-
 /// Run golden vector tests on specified indices
 ///
 /// If `indices` is None, tests all vectors. Otherwise tests only
 /// the specified indices.
 fn run_golden_vector_tests(indices: Option<&[usize]>) {
-    let vectors = load_golden_vectors().expect("failed to load golden vectors");
+    let vectors: Vec<GoldenVector> =
+        serde_json::from_str(include_str!("../testdata/golden-vectors.json"))
+            .expect("failed to load golden vectors");
 
     // Validate indices are within bounds
     if let Some(idx) = indices {
