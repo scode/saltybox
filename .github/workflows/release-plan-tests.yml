@@ -17,6 +17,66 @@ jobs:
       - name: cargo generate-lockfile
         if: hashFiles('Cargo.lock') == ''
         run: cargo generate-lockfile
+      - name: verify release workflow permissions
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          import re
+
+          lines = Path(".github/workflows/release.yml").read_text().splitlines()
+
+          def parse_mapping(start, child_indent):
+              values = {}
+              prefix = " " * child_indent
+              for line in lines[start + 1:]:
+                  if line and not line.startswith(prefix):
+                      break
+                  if not line.strip():
+                      continue
+                  match = re.fullmatch(
+                      rf"{prefix}\"?([A-Za-z0-9_-]+)\"?: \"?([A-Za-z0-9_-]+)\"?",
+                      line,
+                  )
+                  if match:
+                      values[match.group(1)] = match.group(2)
+              return values
+
+          top_level_permissions = [
+              i for i, line in enumerate(lines) if line == "permissions:"
+          ]
+          if not top_level_permissions:
+              raise SystemExit("release workflow must default contents permission to read")
+          if parse_mapping(top_level_permissions[0], 2).get("contents") != "read":
+              raise SystemExit("release workflow default contents permission must be read")
+
+          job_ranges = []
+          for i, line in enumerate(lines):
+              match = re.fullmatch(r"  ([A-Za-z0-9_-]+):", line)
+              if match:
+                  job_ranges.append([match.group(1), i, len(lines)])
+          for current, next_job in zip(job_ranges, job_ranges[1:]):
+              current[2] = next_job[1]
+
+          write_jobs = []
+          broad_write_jobs = []
+          for name, start, end in job_ranges:
+              for offset, line in enumerate(lines[start:end]):
+                  scalar = re.fullmatch(r"    permissions: \"?([A-Za-z0-9_-]+)\"?", line)
+                  if scalar and scalar.group(1) in {"write", "write-all"}:
+                      broad_write_jobs.append(name)
+                  if line == "    permissions:":
+                      if parse_mapping(start + offset, 6).get("contents") == "write":
+                          write_jobs.append(name)
+
+          if broad_write_jobs:
+              raise SystemExit(
+                  f"release workflow jobs must not request broad write permissions: {broad_write_jobs}"
+              )
+          if write_jobs != ["host"]:
+              raise SystemExit(
+                  f"expected only the host job to request contents: write, got {write_jobs}"
+              )
+          PY
       - name: cargo test --locked
         run: cargo test --locked --all-features --all-targets
 
