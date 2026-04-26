@@ -6,7 +6,7 @@ use thiserror::Error;
 #[non_exhaustive]
 pub enum ErrorCategory {
     /// Any failure that cannot be confidently attributed to any other error
-    /// caterogy in this enum.
+    /// category in this enum.
     ///
     /// In particular this means that use of Internal is never a guarantee
     /// the error is not, for example due to a user error - merely that it
