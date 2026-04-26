@@ -126,6 +126,57 @@ fn test_encrypt_decrypt_roundtrip() {
 }
 
 #[test]
+fn test_passphrase_stdin_preserves_trailing_newline() {
+    let temp_dir = TempDir::new().unwrap();
+    let plaintext = temp_dir.path().join("plaintext.txt");
+    let encrypted = temp_dir.path().join("encrypted.txt.salty");
+    let decrypted = temp_dir.path().join("decrypted.txt");
+
+    fs::write(&plaintext, "newline-sensitive passphrase").unwrap();
+
+    let result = run_saltybox_with_passphrase(
+        &[
+            "encrypt",
+            "-i",
+            plaintext.to_str().unwrap(),
+            "-o",
+            encrypted.to_str().unwrap(),
+        ],
+        "test\n",
+    )
+    .unwrap();
+    assert!(
+        result.status.success(),
+        "encrypt failed: {}",
+        String::from_utf8_lossy(&result.stderr)
+    );
+
+    let decrypt_args = [
+        "decrypt",
+        "-i",
+        encrypted.to_str().unwrap(),
+        "-o",
+        decrypted.to_str().unwrap(),
+    ];
+
+    let result = run_saltybox_with_passphrase(&decrypt_args, "test").unwrap();
+    assert!(!result.status.success());
+    assert!(!decrypted.exists());
+
+    let result = run_saltybox_with_passphrase(&decrypt_args, "test\n").unwrap();
+    assert!(
+        result.status.success(),
+        "decrypt failed: {}",
+        String::from_utf8_lossy(&result.stderr)
+    );
+
+    assert_eq!(
+        fs::read_to_string(&decrypted).unwrap(),
+        "newline-sensitive passphrase"
+    );
+}
+
+#[test]
 fn test_update_operation() {
     let temp_dir = TempDir::new().unwrap();
     let plaintext1 = temp_dir.path().join("plaintext1.txt");
