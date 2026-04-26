@@ -48,7 +48,7 @@ Then proceed:
 6. Run `dprint fmt` to fix any formatting issues in the generated changelog.
 7. Verify the changelog heading exists: `rg -n "^## \[$VERSION\]" CHANGELOG.md`
 8. Create a release PR with commit message `chore: release $VERSION`. The PR must include `Cargo.toml`, `Cargo.lock`,
-   and `CHANGELOG.md` (CHANGELOG.md will be untracked on first release -- `gt add` it before committing).
+   and `CHANGELOG.md`.
 9. **Stop and explicitly ask the user for confirmation before merging and tagging.** Do not silently wait -- tell the
    user you are ready to merge and tag, and ask them to confirm.
 10. Merge the PR: `gh pr merge <number> --squash`
