@@ -401,6 +401,19 @@ mod tests {
     }
 
     #[test]
+    fn test_length_exceeds_remaining_payload() {
+        let mut ciphertext = vec![0u8; SALT_LEN + NONCE_LEN + 8 + 2];
+        let claimed_length: i64 = 3;
+        ciphertext[SALT_LEN + NONCE_LEN..SALT_LEN + NONCE_LEN + 8]
+            .copy_from_slice(&claimed_length.to_be_bytes());
+
+        let result = decrypt(b"test", &ciphertext);
+
+        let err = result.expect_err("expected truncated input error");
+        assert_eq!(err.kind, Some(ErrorKind::TruncatedInput));
+    }
+
+    #[test]
     fn test_trailing_data() {
         let passphrase = b"test";
         let plaintext = b"hello";
