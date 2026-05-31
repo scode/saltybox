@@ -14,10 +14,12 @@ pub trait PassphraseReader {
 }
 
 /// Returns a fixed passphrase (for testing)
+#[cfg(test)]
 pub struct ConstantPassphraseReader {
     passphrase: Zeroizing<Vec<u8>>,
 }
 
+#[cfg(test)]
 impl ConstantPassphraseReader {
     pub fn new(passphrase: Vec<u8>) -> Self {
         Self {
@@ -26,6 +28,7 @@ impl ConstantPassphraseReader {
     }
 }
 
+#[cfg(test)]
 impl PassphraseReader for ConstantPassphraseReader {
     fn read_passphrase(&mut self) -> Result<Zeroizing<Vec<u8>>> {
         Ok(Zeroizing::new((*self.passphrase).clone()))
