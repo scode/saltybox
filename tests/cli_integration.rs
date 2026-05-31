@@ -125,6 +125,63 @@ fn test_encrypt_decrypt_roundtrip() {
     assert_eq!(original, decrypted);
 }
 
+/// Exercises output paths such as `out.salty` that have no directory component.
+///
+/// `Path::parent()` reports these as having an empty parent path. The CLI still
+/// needs to treat them as files in the child process's current directory.
+#[test]
+fn test_output_path_without_directory_component_roundtrip() {
+    let temp_dir = TempDir::new().unwrap();
+    let plaintext = temp_dir.path().join("plain.txt");
+
+    fs::write(&plaintext, "bare relative output").unwrap();
+
+    let mut child = Command::new(saltybox_bin())
+        .arg("--passphrase-stdin")
+        .args([
+            "encrypt",
+            "-i",
+            plaintext.to_str().unwrap(),
+            "-o",
+            "out.salty",
+        ])
+        .current_dir(temp_dir.path())
+        .stdin(Stdio::piped())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .spawn()
+        .unwrap();
+    child.stdin.as_mut().unwrap().write_all(b"test").unwrap();
+    let result = child.wait_with_output().unwrap();
+    assert!(
+        result.status.success(),
+        "encrypt failed: {}",
+        String::from_utf8_lossy(&result.stderr)
+    );
+
+    let mut child = Command::new(saltybox_bin())
+        .arg("--passphrase-stdin")
+        .args(["decrypt", "-i", "out.salty", "-o", "decrypted.txt"])
+        .current_dir(temp_dir.path())
+        .stdin(Stdio::piped())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .spawn()
+        .unwrap();
+    child.stdin.as_mut().unwrap().write_all(b"test").unwrap();
+    let result = child.wait_with_output().unwrap();
+    assert!(
+        result.status.success(),
+        "decrypt failed: {}",
+        String::from_utf8_lossy(&result.stderr)
+    );
+
+    assert_eq!(
+        fs::read_to_string(temp_dir.path().join("decrypted.txt")).unwrap(),
+        "bare relative output"
+    );
+}
+
 #[test]
 fn test_passphrase_stdin_preserves_trailing_newline() {
     let temp_dir = TempDir::new().unwrap();
