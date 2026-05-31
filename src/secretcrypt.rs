@@ -137,14 +137,9 @@ pub fn decrypt(passphrase: &[u8], ciphertext: &[u8]) -> Result<Vec<u8>> {
             "input likely truncated while reading salt",
         ));
     }
-    let salt: [u8; SALT_LEN] = ciphertext[pos..pos + SALT_LEN].try_into().map_err(|e| {
-        SaltyboxError::with_kind_and_source(
-            ErrorCategory::Internal,
-            ErrorKind::InternalInvariant,
-            "failed to read salt",
-            e,
-        )
-    })?;
+    let salt: [u8; SALT_LEN] = ciphertext[pos..pos + SALT_LEN]
+        .try_into()
+        .expect("bounds check above guarantees a full salt field");
     pos += SALT_LEN;
 
     if ciphertext.len() < pos + NONCE_LEN {
@@ -154,14 +149,9 @@ pub fn decrypt(passphrase: &[u8], ciphertext: &[u8]) -> Result<Vec<u8>> {
             "input likely truncated while reading nonce",
         ));
     }
-    let nonce: [u8; NONCE_LEN] = ciphertext[pos..pos + NONCE_LEN].try_into().map_err(|e| {
-        SaltyboxError::with_kind_and_source(
-            ErrorCategory::Internal,
-            ErrorKind::InternalInvariant,
-            "failed to read nonce",
-            e,
-        )
-    })?;
+    let nonce: [u8; NONCE_LEN] = ciphertext[pos..pos + NONCE_LEN]
+        .try_into()
+        .expect("bounds check above guarantees a full nonce field");
     pos += NONCE_LEN;
 
     if ciphertext.len() < pos + size_of::<i64>() {
@@ -171,17 +161,9 @@ pub fn decrypt(passphrase: &[u8], ciphertext: &[u8]) -> Result<Vec<u8>> {
             "input likely truncated while reading sealed box length",
         ));
     }
-    let length_bytes: [u8; 8] =
-        ciphertext[pos..pos + size_of::<i64>()]
-            .try_into()
-            .map_err(|e| {
-                SaltyboxError::with_kind_and_source(
-                    ErrorCategory::Internal,
-                    ErrorKind::InternalInvariant,
-                    "failed to read length",
-                    e,
-                )
-            })?;
+    let length_bytes: [u8; 8] = ciphertext[pos..pos + size_of::<i64>()]
+        .try_into()
+        .expect("bounds check above guarantees a full length field");
     let sealed_box_len = i64::from_be_bytes(length_bytes);
     pos += size_of::<i64>();
 
