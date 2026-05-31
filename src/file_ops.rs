@@ -125,13 +125,34 @@ fn update_paths_conflict(plain_path: &Path, crypt_path: &Path) -> bool {
         )
 }
 
-/// Write file with secure permissions (0o600 on Unix)
+/// Replaces a file through a private same-directory temporary file.
+///
+/// On Unix, successful writes sync both the tempfile contents and the containing
+/// directory so the replacement survives crashes that happen after rename
+/// returns. The resulting file mode is `0600`.
 fn write_file_secure(path: &Path, contents: &[u8]) -> Result<()> {
     let output_dir = path.parent().ok_or_else(|| {
         SaltyboxError::with_kind(
             ErrorCategory::User,
             ErrorKind::Io,
             "output path has no parent directory",
+        )
+    })?;
+    let output_dir = if output_dir.as_os_str().is_empty() {
+        Path::new(".")
+    } else {
+        output_dir
+    };
+    #[cfg(unix)]
+    let output_dir_file = fs::File::open(output_dir).map_err(|e| {
+        SaltyboxError::with_kind_and_source(
+            ErrorCategory::Internal,
+            ErrorKind::Io,
+            format!(
+                "failed to open output directory for syncing after writing {}",
+                path.display()
+            ),
+            e,
         )
     })?;
     let mut temp_file = tempfile::Builder::new()
@@ -203,6 +224,19 @@ fn write_file_secure(path: &Path, contents: &[u8]) -> Result<()> {
             e,
         )
     })?;
+    #[cfg(unix)]
+    {
+        // The file sync above covers the bytes. The directory sync makes the
+        // rename itself durable so a crash cannot lose the new directory entry.
+        output_dir_file.sync_all().map_err(|e| {
+            SaltyboxError::with_kind_and_source(
+                ErrorCategory::Internal,
+                ErrorKind::Io,
+                format!("failed to sync directory after writing {}", path.display()),
+                e,
+            )
+        })?;
+    }
     Ok(())
 }
 
