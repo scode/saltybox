@@ -4,17 +4,13 @@
 
 use std::fs;
 use std::io::{self, Write};
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
 use tempfile::TempDir;
 
 /// Get path to the saltybox binary
-fn saltybox_bin() -> PathBuf {
-    let mut path = std::env::current_exe().unwrap();
-    path.pop(); // Remove test binary name
-    path.pop(); // Remove deps/
-    path.push("saltybox");
-    path
+fn saltybox_bin() -> &'static Path {
+    Path::new(env!("CARGO_BIN_EXE_saltybox"))
 }
 
 /// Run saltybox with passphrase from stdin
