@@ -41,7 +41,10 @@ pub enum ErrorKind {
     PassphraseUnavailable,
     /// Low-level scrypt key derivation failed.
     ScryptFailure,
-    /// NaCl secretbox (XSalsa20Poly1305) failed to seal or open data.
+    /// NaCl secretbox (XSalsa20Poly1305) failed while sealing data.
+    ///
+    /// Open failures are reported as `AuthenticationFailed` because callers
+    /// cannot distinguish a bad passphrase from corrupt or tampered input.
     SecretboxFailure,
     /// Unexpected state reached within saltybox logic.
     InternalInvariant,
