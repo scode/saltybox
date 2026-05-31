@@ -292,6 +292,24 @@ mod tests {
     }
 
     #[test]
+    fn test_random_encryption_uses_fresh_salt_and_nonce() {
+        let passphrase = b"test";
+        let plaintext = b"same plaintext";
+
+        let first = encrypt(passphrase, plaintext).unwrap();
+        let second = encrypt(passphrase, plaintext).unwrap();
+
+        assert_ne!(first, second);
+        assert_ne!(&first[..SALT_LEN], &second[..SALT_LEN]);
+        assert_ne!(
+            &first[SALT_LEN..SALT_LEN + NONCE_LEN],
+            &second[SALT_LEN..SALT_LEN + NONCE_LEN]
+        );
+        assert_eq!(decrypt(passphrase, &first).unwrap(), plaintext);
+        assert_eq!(decrypt(passphrase, &second).unwrap(), plaintext);
+    }
+
+    #[test]
     fn test_different_nonce_different_ciphertext() {
         let passphrase = "test";
         let plaintext = b"hello world";
