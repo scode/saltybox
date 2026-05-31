@@ -58,17 +58,12 @@ impl PassphraseReader for ReaderPassphraseReader {
     }
 }
 /// Reads passphrase from terminal with no echo
+#[derive(Default)]
 pub struct TerminalPassphraseReader;
 
 impl TerminalPassphraseReader {
     pub fn new() -> Self {
         Self
-    }
-}
-
-impl Default for TerminalPassphraseReader {
-    fn default() -> Self {
-        Self::new()
     }
 }
 
