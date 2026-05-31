@@ -466,6 +466,44 @@ mod tests {
     }
 
     #[test]
+    #[cfg(unix)]
+    fn test_decrypt_write_failure_preserves_existing_output() {
+        let temp_dir = TempDir::new().unwrap();
+        let output_dir = temp_dir.path().join("output");
+        let plain_path = temp_dir.path().join("plain.txt");
+        let crypt_path = temp_dir.path().join("crypt.txt.saltybox");
+        let decrypted_path = output_dir.join("decrypted.txt");
+
+        fs::create_dir(&output_dir).unwrap();
+        fs::write(&plain_path, b"secret").unwrap();
+        fs::write(&decrypted_path, b"old plaintext").unwrap();
+
+        let mut reader = ConstantPassphraseReader::new(b"test".to_vec());
+        encrypt_file(&plain_path, &crypt_path, &mut reader).unwrap();
+
+        let original_permissions = fs::metadata(&output_dir).unwrap().permissions();
+        let mut unwritable_permissions = original_permissions.clone();
+        unwritable_permissions.set_mode(0o500);
+        fs::set_permissions(&output_dir, unwritable_permissions).unwrap();
+
+        let probe_path = output_dir.join("write-probe");
+        if fs::write(&probe_path, b"probe").is_ok() {
+            fs::set_permissions(&output_dir, original_permissions).unwrap();
+            fs::remove_file(probe_path).unwrap();
+            eprintln!("skipping write-failure assertion because this process can still write");
+            return;
+        }
+
+        let mut reader = ConstantPassphraseReader::new(b"test".to_vec());
+        let result = decrypt_file(&crypt_path, &decrypted_path, &mut reader);
+
+        fs::set_permissions(&output_dir, original_permissions).unwrap();
+
+        result.expect_err("expected decrypt output write to fail");
+        assert_eq!(fs::read(&decrypted_path).unwrap(), b"old plaintext");
+    }
+
+    #[test]
     fn test_decrypt_wrong_passphrase() {
         let temp_dir = TempDir::new().unwrap();
         let plain_path = temp_dir.path().join("plain.txt");
