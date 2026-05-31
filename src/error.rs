@@ -22,7 +22,7 @@ pub enum ErrorCategory {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 #[non_exhaustive]
 pub enum ErrorKind {
-    /// The armored representation is malformed (prefix, encoding, or unsupported version).
+    /// The armored representation is truncated or does not start with a saltybox prefix.
     ArmoringInvalid,
     /// Base64 decoding of the armored payload failed.
     ArmoringDecode,
