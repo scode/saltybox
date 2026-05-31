@@ -472,6 +472,43 @@ mod tests {
     }
 
     #[test]
+    fn test_decrypt_rejects_non_utf8_armored_input() {
+        let temp_dir = TempDir::new().unwrap();
+        let crypt_path = temp_dir.path().join("crypt.txt.saltybox");
+        let decrypted_path = temp_dir.path().join("decrypted.txt");
+
+        fs::write(&crypt_path, [0xff]).unwrap();
+
+        let mut reader = ConstantPassphraseReader::new(b"test".to_vec());
+        let result = decrypt_file(&crypt_path, &decrypted_path, &mut reader);
+
+        let err = result.expect_err("expected UTF-8 rejection");
+        assert_eq!(err.category, ErrorCategory::User);
+        assert_eq!(err.kind, Some(ErrorKind::Io));
+        assert_eq!(err.message(), "input file is not valid UTF-8");
+        assert!(!decrypted_path.exists());
+    }
+
+    #[test]
+    fn test_update_rejects_non_utf8_encrypted_input() {
+        let temp_dir = TempDir::new().unwrap();
+        let plain_path = temp_dir.path().join("plain.txt");
+        let crypt_path = temp_dir.path().join("crypt.txt.saltybox");
+
+        fs::write(&plain_path, b"new plaintext").unwrap();
+        fs::write(&crypt_path, [0xff]).unwrap();
+
+        let mut reader = ConstantPassphraseReader::new(b"test".to_vec());
+        let result = update_file(&plain_path, &crypt_path, &mut reader);
+
+        let err = result.expect_err("expected UTF-8 rejection");
+        assert_eq!(err.category, ErrorCategory::User);
+        assert_eq!(err.kind, Some(ErrorKind::Io));
+        assert_eq!(err.message(), "encrypted file is not valid UTF-8");
+        assert_eq!(fs::read(&crypt_path).unwrap(), [0xff]);
+    }
+
+    #[test]
     fn test_empty_file() {
         let temp_dir = TempDir::new().unwrap();
         let plain_path = temp_dir.path().join("empty.txt");
