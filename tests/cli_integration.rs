@@ -3,7 +3,7 @@
 //! Tests the command-line interface end-to-end.
 
 use std::fs;
-use std::io::Write;
+use std::io::{self, Write};
 use std::path::PathBuf;
 use std::process::{Command, Stdio};
 use tempfile::TempDir;
@@ -30,14 +30,26 @@ fn run_saltybox_with_passphrase(
         .stderr(Stdio::piped())
         .spawn()?;
 
-    {
+    let stdin_write_error = {
         let stdin = child.stdin.as_mut().expect("failed to open stdin");
-        // Ignore BrokenPipe errors - the command may exit before reading stdin
-        // if it encounters an error (e.g., file not found)
-        let _ = stdin.write_all(passphrase.as_bytes());
-    }
+        if let Err(err) = stdin.write_all(passphrase.as_bytes()) {
+            if err.kind() != io::ErrorKind::BrokenPipe {
+                Some(err)
+            } else {
+                None
+            }
+        } else {
+            None
+        }
+    };
+    drop(child.stdin.take());
 
-    child.wait_with_output()
+    let output = child.wait_with_output();
+    if let Some(err) = stdin_write_error {
+        output?;
+        return Err(err);
+    }
+    output
 }
 
 /// Get path to testdata directory
