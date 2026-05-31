@@ -118,14 +118,11 @@ pub fn update_file(
 }
 
 fn update_paths_conflict(plain_path: &Path, crypt_path: &Path) -> bool {
-    if plain_path == crypt_path {
-        return true;
-    }
-
-    match (fs::canonicalize(plain_path), fs::canonicalize(crypt_path)) {
-        (Ok(canonical_plain), Ok(canonical_crypt)) => canonical_plain == canonical_crypt,
-        _ => false,
-    }
+    plain_path == crypt_path
+        || matches!(
+            (fs::canonicalize(plain_path), fs::canonicalize(crypt_path)),
+            (Ok(canonical_plain), Ok(canonical_crypt)) if canonical_plain == canonical_crypt
+        )
 }
 
 /// Write file with secure permissions (0o600 on Unix)
