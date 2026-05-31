@@ -1,6 +1,6 @@
 //! Saltybox CLI - Passphrase-based file encryption
 //!
-//! Command-line interface for encrypting and decrypting files using
+//! Command-line interface for encrypting, decrypting, and updating files using
 //! NaCl secretbox (XSalsa20Poly1305) with scrypt key derivation.
 
 use clap::{Parser, Subcommand};
