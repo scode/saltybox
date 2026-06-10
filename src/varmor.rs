@@ -24,15 +24,12 @@ pub fn wrap(body: &[u8]) -> String {
 }
 
 /// Unwrap an armored string, returning the original bytes
+///
+/// Decode failures are diagnosed per scenario: input that is a prefix of the
+/// magic marker (likely truncation), input claiming a saltybox version we do
+/// not support, input that does not look like saltybox data at all, and a
+/// correctly marked payload whose base64 fails to decode.
 pub fn unwrap(armored: &str) -> Result<Vec<u8>> {
-    if armored.len() < V1_MAGIC.len() {
-        return Err(SaltyboxError::with_kind(
-            ErrorCategory::User,
-            ErrorKind::ArmoringInvalid,
-            "input size smaller than magic marker; likely truncated",
-        ));
-    }
-
     if let Some(encoded) = armored.strip_prefix(V1_MAGIC) {
         let body = URL_SAFE_NO_PAD.decode(encoded).map_err(|e| {
             SaltyboxError::with_kind_and_source(
@@ -43,6 +40,16 @@ pub fn unwrap(armored: &str) -> Result<Vec<u8>> {
             )
         })?;
         Ok(body)
+    } else if V1_MAGIC.starts_with(armored) {
+        // A proper prefix of the magic marker (including empty input) is
+        // exactly what truncation at an unlucky offset would produce; short
+        // input that diverges from the magic falls through to the branches
+        // below for a more accurate diagnosis.
+        Err(SaltyboxError::with_kind(
+            ErrorCategory::User,
+            ErrorKind::ArmoringInvalid,
+            "input is a prefix of the magic marker; likely truncated",
+        ))
     } else if armored.starts_with(MAGIC_PREFIX) {
         Err(SaltyboxError::with_kind(
             ErrorCategory::User,
@@ -104,9 +111,52 @@ mod tests {
 
     #[test]
     fn test_truncated_input() {
-        let result = unwrap("");
-        let err = result.expect_err("expected truncated input error");
-        assert_eq!(err.kind, Some(ErrorKind::ArmoringInvalid));
+        for truncated in ["", "salt", "saltybox", "saltybox1"] {
+            let result = unwrap(truncated);
+            let err =
+                result.expect_err(&format!("expected truncated input error for {truncated:?}"));
+            assert_eq!(
+                err.kind,
+                Some(ErrorKind::ArmoringInvalid),
+                "input: {truncated:?}"
+            );
+            assert_eq!(
+                err.message(),
+                "input is a prefix of the magic marker; likely truncated",
+                "input: {truncated:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn test_short_input_not_matching_magic_is_unrecognized() {
+        // Shorter than the magic marker, but diverging from it (including
+        // partial overlap): "unrecognized" is the accurate diagnosis, not
+        // "truncated".
+        for input in ["abc", "saltz", "salty box"] {
+            let result = unwrap(input);
+            let err = result.expect_err(&format!("expected non-saltybox error for {input:?}"));
+            assert_eq!(
+                err.kind,
+                Some(ErrorKind::ArmoringInvalid),
+                "input: {input:?}"
+            );
+            assert_eq!(
+                err.message(),
+                "input unrecognized as saltybox data",
+                "input: {input:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn test_short_wrong_version_is_from_future() {
+        // Shorter than the v1 magic but already diverged from it after the
+        // "saltybox" prefix: the unsupported-version diagnosis is accurate,
+        // not truncation.
+        let result = unwrap("saltybox2");
+        let err = result.expect_err("expected unsupported version error");
+        assert_eq!(err.kind, Some(ErrorKind::ArmoringFromFuture));
     }
 
     #[test]
