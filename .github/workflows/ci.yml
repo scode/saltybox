@@ -10,6 +10,11 @@ on:
       - master
       - develop
 
+# CI only needs to read the repo. Without this, third-party actions run with
+# whatever the repository default GITHUB_TOKEN grants.
+permissions:
+  contents: read
+
 env:
   CARGO_TERM_COLOR: always
 
