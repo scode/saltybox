@@ -117,12 +117,38 @@ pub fn update_file(
     Ok(())
 }
 
+/// Detects whether the update input and output refer to the same file.
+///
+/// Three alias classes are covered: identical paths, paths that canonicalize
+/// to the same target (symlinks, `..` traversal), and on Unix, distinct
+/// directory entries hardlinked to the same inode — which canonicalize to
+/// different paths and would slip past the first two checks.
+///
+/// This is a best-effort guard against the user clobbering their ciphertext,
+/// not a security boundary: it races against concurrent filesystem changes.
 fn update_paths_conflict(plain_path: &Path, crypt_path: &Path) -> bool {
     plain_path == crypt_path
         || matches!(
             (fs::canonicalize(plain_path), fs::canonicalize(crypt_path)),
             (Ok(canonical_plain), Ok(canonical_crypt)) if canonical_plain == canonical_crypt
         )
+        || paths_are_same_inode(plain_path, crypt_path)
+}
+
+#[cfg(unix)]
+fn paths_are_same_inode(plain_path: &Path, crypt_path: &Path) -> bool {
+    use std::os::unix::fs::MetadataExt;
+
+    matches!(
+        (fs::metadata(plain_path), fs::metadata(crypt_path)),
+        (Ok(plain_meta), Ok(crypt_meta))
+            if plain_meta.dev() == crypt_meta.dev() && plain_meta.ino() == crypt_meta.ino()
+    )
+}
+
+#[cfg(not(unix))]
+fn paths_are_same_inode(_plain_path: &Path, _crypt_path: &Path) -> bool {
+    false
 }
 
 /// Replaces a file through a private same-directory temporary file.
@@ -362,6 +388,42 @@ mod tests {
         let result = update_file(&alias_path, &crypt_path, &mut reader);
 
         let err = result.expect_err("expected canonical path conflict failure");
+        assert_eq!(err.category, ErrorCategory::User);
+        assert_eq!(err.kind, Some(ErrorKind::Io));
+        assert_eq!(
+            err.message(),
+            "input and output paths must be different for update"
+        );
+
+        let decrypted_path = temp_dir.path().join("decrypted.txt");
+        let mut reader = ConstantPassphraseReader::new(b"test password".to_vec());
+        decrypt_file(&crypt_path, &decrypted_path, &mut reader).unwrap();
+        let decrypted = fs::read(&decrypted_path).unwrap();
+        assert_eq!(decrypted, original);
+    }
+
+    #[test]
+    #[cfg(unix)]
+    fn test_update_rejects_hardlink_alias_of_output_path() {
+        let temp_dir = TempDir::new().unwrap();
+        let plain_path = temp_dir.path().join("plain.txt");
+        let crypt_path = temp_dir.path().join("crypt.txt.saltybox");
+        let hardlink_path = temp_dir.path().join("crypt-hardlink.saltybox");
+
+        let original = b"Initial content";
+        fs::write(&plain_path, original).unwrap();
+
+        let mut reader = ConstantPassphraseReader::new(b"test password".to_vec());
+        encrypt_file(&plain_path, &crypt_path, &mut reader).unwrap();
+
+        // A hardlink canonicalizes to its own path, so only the inode check
+        // can catch this alias.
+        fs::hard_link(&crypt_path, &hardlink_path).unwrap();
+
+        let mut reader = ConstantPassphraseReader::new(b"test password".to_vec());
+        let result = update_file(&hardlink_path, &crypt_path, &mut reader);
+
+        let err = result.expect_err("expected hardlink path conflict failure");
         assert_eq!(err.category, ErrorCategory::User);
         assert_eq!(err.kind, Some(ErrorKind::Io));
         assert_eq!(
