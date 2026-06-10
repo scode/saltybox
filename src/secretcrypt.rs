@@ -127,7 +127,11 @@ pub fn encrypt_deterministic(
 }
 
 /// Decrypt ciphertext with a passphrase
-pub fn decrypt(passphrase: &[u8], ciphertext: &[u8]) -> Result<Vec<u8>> {
+///
+/// The plaintext is returned in a `Zeroizing` buffer so it is wiped from
+/// memory on drop, matching the treatment of the passphrase and derived key
+/// (the plaintext is at least as sensitive as either).
+pub fn decrypt(passphrase: &[u8], ciphertext: &[u8]) -> Result<Zeroizing<Vec<u8>>> {
     let mut pos = 0;
 
     if ciphertext.len() < pos + SALT_LEN {
@@ -224,7 +228,7 @@ pub fn decrypt(passphrase: &[u8], ciphertext: &[u8]) -> Result<Vec<u8>> {
         )
     })?;
 
-    Ok(plaintext)
+    Ok(Zeroizing::new(plaintext))
 }
 
 #[cfg(test)]
@@ -287,8 +291,8 @@ mod tests {
             &first[SALT_LEN..SALT_LEN + NONCE_LEN],
             &second[SALT_LEN..SALT_LEN + NONCE_LEN]
         );
-        assert_eq!(decrypt(passphrase, &first).unwrap(), plaintext);
-        assert_eq!(decrypt(passphrase, &second).unwrap(), plaintext);
+        assert_eq!(*decrypt(passphrase, &first).unwrap(), plaintext);
+        assert_eq!(*decrypt(passphrase, &second).unwrap(), plaintext);
     }
 
     #[test]
@@ -418,7 +422,7 @@ mod tests {
         let ciphertext = encrypt(passphrase, &plaintext).unwrap();
         let decrypted = decrypt(passphrase, &ciphertext).unwrap();
 
-        assert_eq!(plaintext, decrypted);
+        assert_eq!(plaintext, *decrypted);
     }
 
     #[test]
@@ -429,7 +433,7 @@ mod tests {
         let ciphertext = encrypt(passphrase, &plaintext).unwrap();
         let decrypted = decrypt(passphrase, &ciphertext).unwrap();
 
-        assert_eq!(plaintext, decrypted);
+        assert_eq!(plaintext, *decrypted);
     }
 
     #[test]
@@ -440,7 +444,7 @@ mod tests {
         let ciphertext = encrypt(passphrase, &plaintext).unwrap();
         let decrypted = decrypt(passphrase, &ciphertext).unwrap();
 
-        assert_eq!(plaintext, decrypted);
+        assert_eq!(plaintext, *decrypted);
     }
 
     #[test]
@@ -451,7 +455,7 @@ mod tests {
         let ciphertext = encrypt(passphrase, &plaintext).unwrap();
         let decrypted = decrypt(passphrase, &ciphertext).unwrap();
 
-        assert_eq!(plaintext, decrypted);
+        assert_eq!(plaintext, *decrypted);
     }
 
     #[test]

@@ -10,6 +10,7 @@ use crate::varmor;
 use std::fs;
 use std::io::{self, Write};
 use std::path::Path;
+use zeroize::Zeroizing;
 
 const TEMPFILE_PREFIX: &str = ".saltybox-";
 const TEMPFILE_SUFFIX: &str = ".tmp";
@@ -26,7 +27,7 @@ pub fn encrypt_file(
     output_path: &Path,
     passphrase_reader: &mut dyn PassphraseReader,
 ) -> Result<()> {
-    let plaintext = fs::read(input_path).map_err(|e| read_error(input_path, e))?;
+    let plaintext = Zeroizing::new(fs::read(input_path).map_err(|e| read_error(input_path, e))?);
     let passphrase = passphrase_reader.read_passphrase()?;
     let ciphertext = secretcrypt::encrypt(&passphrase, &plaintext)
         .map_err(|e| e.with_context("encryption failed"))?;
@@ -109,7 +110,8 @@ pub fn update_file(
     secretcrypt::decrypt(&passphrase, &ciphertext)
         .map_err(|e| e.with_context("failed to decrypt"))?;
 
-    let new_plaintext = fs::read(plain_path).map_err(|e| read_error(plain_path, e))?;
+    let new_plaintext =
+        Zeroizing::new(fs::read(plain_path).map_err(|e| read_error(plain_path, e))?);
     let new_ciphertext = secretcrypt::encrypt(&passphrase, &new_plaintext)
         .map_err(|e| e.with_context("failed to encrypt"))?;
     let new_armored = varmor::wrap(&new_ciphertext);

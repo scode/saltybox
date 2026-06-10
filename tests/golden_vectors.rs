@@ -134,7 +134,7 @@ fn run_golden_vector_tests(indices: Option<&[usize]>) {
             }
         };
 
-        if decrypted != expected_plaintext {
+        if *decrypted != expected_plaintext {
             eprintln!("Vector {}: FAILED - plaintext mismatch", i);
             eprintln!("  Comment: {}", vector.comment);
             eprintln!("  Expected length: {}", expected_plaintext.len());
