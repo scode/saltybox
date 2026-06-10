@@ -171,15 +171,18 @@ fn write_file_secure(path: &Path, contents: &[u8]) -> Result<()> {
     };
     #[cfg(unix)]
     let output_dir_file = fs::File::open(output_dir).map_err(|e| {
-        SaltyboxError::with_kind_and_source(
-            ErrorCategory::Internal,
-            ErrorKind::Io,
+        // A missing directory is a user mistake (typoed output path) and gets
+        // a message saying so; the sync-framed message would mislead by
+        // implying the file had already been written.
+        let msg = if e.kind() == io::ErrorKind::NotFound {
+            format!("output directory {} does not exist", output_dir.display())
+        } else {
             format!(
                 "failed to open output directory for syncing after writing {}",
                 path.display()
-            ),
-            e,
-        )
+            )
+        };
+        SaltyboxError::with_kind_and_source(path_error_category(&e), ErrorKind::Io, msg, e)
     })?;
     let mut temp_file = tempfile::Builder::new()
         .prefix(TEMPFILE_PREFIX)
@@ -187,7 +190,7 @@ fn write_file_secure(path: &Path, contents: &[u8]) -> Result<()> {
         .tempfile_in(output_dir)
         .map_err(|e| {
             SaltyboxError::with_kind_and_source(
-                ErrorCategory::Internal,
+                path_error_category(&e),
                 ErrorKind::Io,
                 format!("failed to create tempfile for {}", path.display()),
                 e,
@@ -266,14 +269,22 @@ fn write_file_secure(path: &Path, contents: &[u8]) -> Result<()> {
     Ok(())
 }
 
-fn read_error(path: &Path, err: io::Error) -> SaltyboxError {
-    let category = if err.kind() == io::ErrorKind::NotFound {
+/// Categorizes a failed I/O operation on a user-supplied path.
+///
+/// A missing path is a user mistake (typoed input file or output directory);
+/// anything else is unexpected and treated as internal. Used on both the
+/// read and write sides so the same mistake gets the same categorization.
+fn path_error_category(err: &io::Error) -> ErrorCategory {
+    if err.kind() == io::ErrorKind::NotFound {
         ErrorCategory::User
     } else {
         ErrorCategory::Internal
-    };
+    }
+}
+
+fn read_error(path: &Path, err: io::Error) -> SaltyboxError {
     SaltyboxError::with_kind_and_source(
-        category,
+        path_error_category(&err),
         ErrorKind::Io,
         format!("failed to read from {}", path.display()),
         err,
@@ -563,6 +574,25 @@ mod tests {
 
         result.expect_err("expected decrypt output write to fail");
         assert_eq!(fs::read(&decrypted_path).unwrap(), b"old plaintext");
+    }
+
+    #[test]
+    fn test_encrypt_to_missing_output_directory_is_user_error() {
+        let temp_dir = TempDir::new().unwrap();
+        let plain_path = temp_dir.path().join("plain.txt");
+        let crypt_path = temp_dir
+            .path()
+            .join("no-such-dir")
+            .join("crypt.txt.saltybox");
+
+        fs::write(&plain_path, b"secret").unwrap();
+
+        let mut reader = ConstantPassphraseReader::new(b"test".to_vec());
+        let result = encrypt_file(&plain_path, &crypt_path, &mut reader);
+
+        let err = result.expect_err("expected missing output directory failure");
+        assert_eq!(err.category, ErrorCategory::User);
+        assert_eq!(err.kind, Some(ErrorKind::Io));
     }
 
     #[test]
