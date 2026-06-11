@@ -53,7 +53,7 @@ impl PassphraseReader for ReaderPassphraseReader {
             SaltyboxError::with_kind_and_source(
                 ErrorCategory::Internal,
                 ErrorKind::Io,
-                format!("error reading passphrase: {}", e),
+                "error reading passphrase",
                 e,
             )
         })?;
@@ -90,7 +90,7 @@ impl PassphraseReader for TerminalPassphraseReader {
                 SaltyboxError::with_kind_and_source(
                     ErrorCategory::Internal,
                     ErrorKind::Io,
-                    format!("failed to write prompt: {}", e),
+                    "failed to write prompt",
                     e,
                 )
             })?;
@@ -98,7 +98,7 @@ impl PassphraseReader for TerminalPassphraseReader {
             SaltyboxError::with_kind_and_source(
                 ErrorCategory::Internal,
                 ErrorKind::Io,
-                format!("failed to flush prompt: {}", e),
+                "failed to flush prompt",
                 e,
             )
         })?;
@@ -109,7 +109,7 @@ impl PassphraseReader for TerminalPassphraseReader {
             SaltyboxError::with_kind_and_source(
                 ErrorCategory::Internal,
                 ErrorKind::PassphraseUnavailable,
-                format!("failure reading passphrase: {}", e),
+                "failure reading passphrase",
                 e,
             )
         })?;
