@@ -26,18 +26,15 @@ fn run_saltybox_with_passphrase(
         .stderr(Stdio::piped())
         .spawn()?;
 
-    let stdin_write_error = {
-        let stdin = child.stdin.as_mut().expect("failed to open stdin");
-        if let Err(err) = stdin.write_all(passphrase.as_bytes()) {
-            if err.kind() != io::ErrorKind::BrokenPipe {
-                Some(err)
-            } else {
-                None
-            }
-        } else {
-            None
-        }
-    };
+    // A broken pipe means the child exited before reading all of stdin; the
+    // exit status reports that failure more usefully than the write error.
+    let stdin_write_error = child
+        .stdin
+        .as_mut()
+        .expect("failed to open stdin")
+        .write_all(passphrase.as_bytes())
+        .err()
+        .filter(|err| err.kind() != io::ErrorKind::BrokenPipe);
     drop(child.stdin.take());
 
     let output = child.wait_with_output();
