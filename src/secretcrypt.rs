@@ -328,6 +328,21 @@ mod tests {
     }
 
     #[test]
+    fn test_tampered_sealed_box() {
+        // Pins the authentication property independently of key derivation:
+        // the passphrase is correct, so only the Poly1305 MAC can catch this.
+        let passphrase = b"correct";
+        let plaintext = b"secret data";
+
+        let mut ciphertext = encrypt(passphrase, plaintext).unwrap();
+        *ciphertext.last_mut().unwrap() ^= 0x01;
+        let result = decrypt(passphrase, &ciphertext);
+
+        let err = result.expect_err("expected authentication failure");
+        assert_eq!(err.kind, Some(ErrorKind::AuthenticationFailed));
+    }
+
+    #[test]
     fn test_truncated_salt() {
         let ciphertext = vec![1, 2, 3]; // Less than SALT_LEN
         let result = decrypt(b"test", &ciphertext);
