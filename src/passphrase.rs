@@ -118,41 +118,9 @@ impl PassphraseReader for TerminalPassphraseReader {
     }
 }
 
-/// Wraps another PassphraseReader and caches the result
-///
-/// Provides "at most once" semantics - the upstream reader is called
-/// only on the first invocation, and subsequent calls return the cached value.
-/// The cached passphrase is wrapped in `Zeroizing` and will be securely wiped
-/// when this reader is dropped.
-pub struct CachingPassphraseReader {
-    upstream: Box<dyn PassphraseReader>,
-    cached: Option<Zeroizing<Vec<u8>>>,
-}
-
-impl CachingPassphraseReader {
-    pub fn new(upstream: Box<dyn PassphraseReader>) -> Self {
-        Self {
-            upstream,
-            cached: None,
-        }
-    }
-}
-
-impl PassphraseReader for CachingPassphraseReader {
-    fn read_passphrase(&mut self) -> Result<Zeroizing<Vec<u8>>> {
-        if self.cached.is_none() {
-            let passphrase = self.upstream.read_passphrase()?;
-            self.cached = Some(passphrase);
-        }
-        let cached = self.cached.as_ref().unwrap();
-        Ok(Zeroizing::new(cached.to_vec()))
-    }
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::error::{ErrorCategory, ErrorKind, SaltyboxError};
 
     #[test]
     fn test_constant_reader() {
@@ -197,68 +165,5 @@ mod tests {
         let data: &[u8] = &[0xff, 0xfe, 0x00, 0x01];
         let mut reader = ReaderPassphraseReader::new(Box::new(data));
         assert_eq!(&*reader.read_passphrase().unwrap(), data);
-    }
-
-    #[test]
-    fn test_caching_reader() {
-        // Track how many times upstream is called
-        use std::cell::RefCell;
-        use std::rc::Rc;
-
-        struct CountingReader {
-            passphrase: Vec<u8>,
-            call_count: Rc<RefCell<usize>>,
-        }
-
-        impl PassphraseReader for CountingReader {
-            fn read_passphrase(&mut self) -> Result<Zeroizing<Vec<u8>>> {
-                *self.call_count.borrow_mut() += 1;
-                Ok(Zeroizing::new(self.passphrase.clone()))
-            }
-        }
-
-        let call_count = Rc::new(RefCell::new(0));
-        let upstream = CountingReader {
-            passphrase: b"cached_pass".to_vec(),
-            call_count: call_count.clone(),
-        };
-
-        let mut caching = CachingPassphraseReader::new(Box::new(upstream));
-
-        // First call should invoke upstream
-        assert_eq!(&*caching.read_passphrase().unwrap(), b"cached_pass");
-        assert_eq!(*call_count.borrow(), 1);
-
-        // Second call should return cached value without calling upstream
-        assert_eq!(&*caching.read_passphrase().unwrap(), b"cached_pass");
-        assert_eq!(*call_count.borrow(), 1);
-
-        // Third call should also use cache
-        assert_eq!(&*caching.read_passphrase().unwrap(), b"cached_pass");
-        assert_eq!(*call_count.borrow(), 1);
-    }
-
-    #[test]
-    fn test_caching_reader_with_error() {
-        // Reader that always fails
-        struct FailingReader;
-
-        impl PassphraseReader for FailingReader {
-            fn read_passphrase(&mut self) -> Result<Zeroizing<Vec<u8>>> {
-                Err(SaltyboxError::with_kind(
-                    ErrorCategory::Internal,
-                    ErrorKind::PassphraseUnavailable,
-                    "simulated error",
-                ))
-            }
-        }
-
-        let mut caching = CachingPassphraseReader::new(Box::new(FailingReader));
-
-        // First call should propagate error
-        assert!(caching.read_passphrase().is_err());
-
-        // Error should not be cached - subsequent call should try again
-        assert!(caching.read_passphrase().is_err());
     }
 }
