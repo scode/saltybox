@@ -136,8 +136,12 @@ The binary format contains the following, in order:
    the salt, nonce, and length fields. During decryption, invalid lengths (negative, too large, or causing truncation)
    are rejected as format errors.
 4. **Sealed Box** (variable length, as specified by the length field): The encrypted payload, sealed using NaCl's
-   `secretbox` (XSalsa20 stream cipher with Poly1305 MAC). The sealed box contains the user's plaintext exactly -
-   without any padding or additional metadata.
+   `secretbox` (XSalsa20 stream cipher with Poly1305 MAC) in its standard combined form: a 16-byte Poly1305
+   authentication tag followed by the XSalsa20-encrypted plaintext. The sealed box is therefore always 16 bytes longer
+   than the plaintext. The plaintext is encrypted exactly as provided - no padding and no additional metadata.
+
+The sealed box must be the last thing in the binary payload. Decryption rejects input containing trailing data after the
+sealed box as a format error.
 
 The encryption key is derived from the user-provided passphrase and the salt using scrypt with parameters:
 
