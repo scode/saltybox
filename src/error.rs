@@ -46,8 +46,6 @@ pub enum ErrorKind {
     /// Open failures are reported as `AuthenticationFailed` because callers
     /// cannot distinguish a bad passphrase from corrupt or tampered input.
     SecretboxFailure,
-    /// Unexpected state reached within saltybox logic.
-    InternalInvariant,
     /// Interaction with the filesystem, stdin/stdout, or other I/O failed.
     Io,
 }
@@ -67,36 +65,12 @@ pub struct SaltyboxError {
 }
 
 impl SaltyboxError {
-    /// Creates a new error with a required category and display message.
-    pub fn new(category: ErrorCategory, msg: impl Into<String>) -> Self {
-        Self {
-            category,
-            kind: None,
-            source: None,
-            msg: msg.into(),
-        }
-    }
-
     /// Creates a new error that also tags the failure with a kind.
     pub fn with_kind(category: ErrorCategory, kind: ErrorKind, msg: impl Into<String>) -> Self {
         Self {
             category,
             kind: Some(kind),
             source: None,
-            msg: msg.into(),
-        }
-    }
-
-    /// Creates a new error that retains the originating source error.
-    pub fn with_source(
-        category: ErrorCategory,
-        msg: impl Into<String>,
-        source: impl StdError + Send + Sync + 'static,
-    ) -> Self {
-        Self {
-            category,
-            kind: None,
-            source: Some(Box::new(source)),
             msg: msg.into(),
         }
     }
@@ -119,11 +93,6 @@ impl SaltyboxError {
     /// The user-facing message carried by the error.
     pub fn message(&self) -> &str {
         &self.msg
-    }
-
-    /// Returns the preserved source error if present.
-    pub fn source_error(&self) -> Option<&(dyn StdError + Send + Sync + 'static)> {
-        self.source.as_deref()
     }
 
     /// Wraps the current error with a higher-level message while preserving the original as source.
