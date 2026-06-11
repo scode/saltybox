@@ -86,8 +86,10 @@ mod tests {
     }
 
     #[test]
-    fn test_large_random_data() {
-        let bytes = vec![0x42u8; 100_000];
+    fn test_large_varied_data() {
+        // The 256-value period is coprime with base64's 3-byte groups, so
+        // every byte value appears at every group offset.
+        let bytes: Vec<u8> = (0..100_000u32).map(|i| i as u8).collect();
         let armored = wrap(&bytes);
         let unwrapped = unwrap(&armored).unwrap();
         assert_eq!(bytes, unwrapped);
