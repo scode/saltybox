@@ -31,7 +31,7 @@ impl ConstantPassphraseReader {
 #[cfg(test)]
 impl PassphraseReader for ConstantPassphraseReader {
     fn read_passphrase(&mut self) -> Result<Zeroizing<Vec<u8>>> {
-        Ok(Zeroizing::new((*self.passphrase).clone()))
+        Ok(self.passphrase.clone())
     }
 }
 
@@ -61,14 +61,7 @@ impl PassphraseReader for ReaderPassphraseReader {
     }
 }
 /// Reads passphrase from terminal with no echo
-#[derive(Default)]
 pub struct TerminalPassphraseReader;
-
-impl TerminalPassphraseReader {
-    pub fn new() -> Self {
-        Self
-    }
-}
 
 impl PassphraseReader for TerminalPassphraseReader {
     /// Read passphrase from terminal.
@@ -136,7 +129,7 @@ mod tests {
     #[test]
     #[ignore]
     fn test_terminal_reader_interactive() {
-        let mut reader = TerminalPassphraseReader::new();
+        let mut reader = TerminalPassphraseReader;
         println!("\nPlease enter a test passphrase:");
         let passphrase = reader.read_passphrase().unwrap();
         println!("You entered: {}", String::from_utf8_lossy(&passphrase));

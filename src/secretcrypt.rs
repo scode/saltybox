@@ -16,7 +16,6 @@ use crypto_secretbox::{Nonce, XSalsa20Poly1305};
 use rand::TryRng;
 use rand::rngs::SysRng;
 use scrypt::{Params, scrypt};
-use std::mem::{size_of, size_of_val};
 use zeroize::Zeroizing;
 
 /// Length of salt in bytes

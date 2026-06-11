@@ -97,11 +97,11 @@ impl SaltyboxError {
 
     /// Wraps the current error with a higher-level message while preserving the original as source.
     pub fn with_context(self, msg: impl Into<String>) -> Self {
-        let category = self.category;
-        let kind = self.kind;
+        // Field initializers run in source order, so the Copy fields are read
+        // before `self` moves into `source`.
         Self {
-            category,
-            kind,
+            category: self.category,
+            kind: self.kind,
             source: Some(Box::new(self)),
             msg: msg.into(),
         }
