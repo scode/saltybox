@@ -598,6 +598,24 @@ mod tests {
     }
 
     #[test]
+    fn test_read_of_nonexistent_input_is_user_error() {
+        // Pins read_error's NotFound categorization: a typoed input path is a
+        // user mistake, not an internal failure. The CLI-level test cannot
+        // observe the category; both produce the same nonzero exit.
+        let temp_dir = TempDir::new().unwrap();
+        let missing_path = temp_dir.path().join("no-such-file.saltybox");
+        let decrypted_path = temp_dir.path().join("decrypted.txt");
+
+        let mut reader = ConstantPassphraseReader::new(b"test".to_vec());
+        let result = decrypt_file(&missing_path, &decrypted_path, &mut reader);
+
+        let err = result.expect_err("expected missing input file failure");
+        assert_eq!(err.category, ErrorCategory::User);
+        assert_eq!(err.kind, Some(ErrorKind::Io));
+        assert!(!decrypted_path.exists());
+    }
+
+    #[test]
     fn test_decrypt_wrong_passphrase() {
         let temp_dir = TempDir::new().unwrap();
         let plain_path = temp_dir.path().join("plain.txt");
