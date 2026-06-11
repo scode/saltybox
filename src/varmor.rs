@@ -35,7 +35,7 @@ pub fn unwrap(armored: &str) -> Result<Vec<u8>> {
             SaltyboxError::with_kind_and_source(
                 ErrorCategory::User,
                 ErrorKind::ArmoringDecode,
-                format!("base64 decoding failed: {}", e),
+                "base64 decoding failed",
                 e,
             )
         })?;
@@ -180,6 +180,9 @@ mod tests {
         let result = unwrap("saltybox1:bad$$");
         let err = result.expect_err("expected base64 decode error");
         assert_eq!(err.kind, Some(ErrorKind::ArmoringDecode));
+        // The message no longer embeds the decode failure text, so the source
+        // must stay attached for the CLI's "caused by" chain to surface it.
+        assert!(std::error::Error::source(&err).is_some());
     }
 
     #[test]
