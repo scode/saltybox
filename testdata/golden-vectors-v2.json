@@ -1,0 +1,57 @@
+[
+  {
+    "comment": "empty plaintext",
+    "passphrase": "dGVzdA==",
+    "plaintext": "",
+    "salt": "QkJCQkJCQkJCQkJCQkJCQg==",
+    "nonce": "JCQkJCQkJCQkJCQkJCQkJCQkJCQkJCQk",
+    "m_cost_kib": 8192,
+    "t_cost": 3,
+    "p_cost": 1,
+    "armored": "saltybox2:QkJCQkJCQkJCQkJCQkJCQgAAIAAAAAADAAAAASQkJCQkJCQkJCQkJCQkJCQkJCQkJCQkJKp2f3gmPZy06BlUUwWr8ME"
+  },
+  {
+    "comment": "basic text",
+    "passphrase": "dGVzdA==",
+    "plaintext": "dGVzdCBwYXlsb2Fk",
+    "salt": "AAECAwQFBgcICQoLDA0ODw==",
+    "nonce": "AAECAwQFBgcICQoLDA0ODxAREhMUFRYX",
+    "m_cost_kib": 8192,
+    "t_cost": 3,
+    "p_cost": 1,
+    "armored": "saltybox2:AAECAwQFBgcICQoLDA0ODwAAIAAAAAADAAAAAQABAgMEBQYHCAkKCwwNDg8QERITFBUWFwzD0jEQJtkCSl0SBslcxc9u0TKUcd-9COPdAIg"
+  },
+  {
+    "comment": "all byte values as plaintext, non-UTF-8 passphrase",
+    "passphrase": "//4AAQ==",
+    "plaintext": "AAECAwQFBgcICQoLDA0ODxAREhMUFRYXGBkaGxwdHh8gISIjJCUmJygpKissLS4vMDEyMzQ1Njc4OTo7PD0+P0BBQkNERUZHSElKS0xNTk9QUVJTVFVWV1hZWltcXV5fYGFiY2RlZmdoaWprbG1ub3BxcnN0dXZ3eHl6e3x9fn+AgYKDhIWGh4iJiouMjY6PkJGSk5SVlpeYmZqbnJ2en6ChoqOkpaanqKmqq6ytrq+wsbKztLW2t7i5uru8vb6/wMHCw8TFxsfIycrLzM3Oz9DR0tPU1dbX2Nna29zd3t/g4eLj5OXm5+jp6uvs7e7v8PHy8/T19vf4+fr7/P3+/w==",
+    "salt": "paWlpaWlpaWlpaWlpaWlpQ==",
+    "nonce": "WlpaWlpaWlpaWlpaWlpaWlpaWlpaWlpa",
+    "m_cost_kib": 8192,
+    "t_cost": 3,
+    "p_cost": 1,
+    "armored": "saltybox2:paWlpaWlpaWlpaWlpaWlpQAAIAAAAAADAAAAAVpaWlpaWlpaWlpaWlpaWlpaWlpaWlpaWiQPbQNYL2WwQD1oOfXk-YRoUH5z7VEMRogXR_QfQmKCx0dcCV2ecsPhVLj6JSQjXtqP8imwFovxxBQREf4Rvy-VQMqjyYZfFsRj5HDBhcQ9o0HDaLLwSJ9XmmJqpNJOrbN3oB3NsviBEaE-N04drRGlhjIzYKNfnYXBSM46FVnMPiEh-F80WqrMTIFQ-Jq4333CwxEuW-EcF-rM_PZPxbxxaAygc8yW0RLwT62qD_top0cRCsUAOUHlNT--BA1sILNzGdBDzZLr-k1Va43JUd8EdIoA-Hv53zvgVdLU_tdHjTFQsUyVnztL-pPDeeDgAkGZWDPO6ek1plGuw1g0GdOlex1yG7cybDXsYvJbqfAY"
+  },
+  {
+    "comment": "multiple lanes (p=2) pin cross-implementation lane handling",
+    "passphrase": "bGFuZXM=",
+    "plaintext": "cGFyYWxsZWwgbGFuZXM=",
+    "salt": "EREREREREREREREREREREQ==",
+    "nonce": "IiIiIiIiIiIiIiIiIiIiIiIiIiIiIiIi",
+    "m_cost_kib": 8192,
+    "t_cost": 1,
+    "p_cost": 2,
+    "armored": "saltybox2:EREREREREREREREREREREQAAIAAAAAABAAAAAiIiIiIiIiIiIiIiIiIiIiIiIiIiIiIiIuT3qECiBn_k8wnoBCb12IlPQWth59Y3dMmC_mnA-Q"
+  },
+  {
+    "comment": "minimum legal memory cost for one lane",
+    "passphrase": "dGlueQ==",
+    "plaintext": "dGlueSBtZW1vcnk=",
+    "salt": "MzMzMzMzMzMzMzMzMzMzMw==",
+    "nonce": "RERERERERERERERERERERERERERERERE",
+    "m_cost_kib": 8,
+    "t_cost": 1,
+    "p_cost": 1,
+    "armored": "saltybox2:MzMzMzMzMzMzMzMzMzMzMwAAAAgAAAABAAAAAURERERERERERERERERERERERERERERERNJS1a4BO0NLNZCIF9aZmIZkKC_Qq1TnQ9ueLw"
+  }
+]

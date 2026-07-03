@@ -41,6 +41,13 @@ pub enum ErrorKind {
     PassphraseUnavailable,
     /// Low-level scrypt key derivation failed.
     ScryptFailure,
+    /// Low-level Argon2 key derivation failed.
+    Argon2Failure,
+    /// The AEAD (XChaCha20-Poly1305) failed while sealing data.
+    ///
+    /// Open failures are reported as `AuthenticationFailed` because callers
+    /// cannot distinguish a bad passphrase from corrupt or tampered input.
+    AeadFailure,
     /// NaCl secretbox (XSalsa20Poly1305) failed while sealing data.
     ///
     /// Open failures are reported as `AuthenticationFailed` because callers
