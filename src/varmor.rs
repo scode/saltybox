@@ -154,8 +154,12 @@ mod tests {
     #[test]
     fn test_short_wrong_version_is_from_future() {
         // Shorter than the v1 magic but already diverged from it after the
-        // "saltybox" prefix: the unsupported-version diagnosis is accurate,
-        // not truncation.
+        // "saltybox" prefix: from varmor's v1-only view the
+        // unsupported-version diagnosis is accurate, not truncation. This
+        // pins varmor's internal contract only — the CLI's user-visible
+        // classification lives in format::engine_for, which knows the full set of
+        // supported versions (and diagnoses bare "saltybox2" as truncation)
+        // and intercepts input before varmor ever sees it.
         let result = unwrap("saltybox2");
         let err = result.expect_err("expected unsupported version error");
         assert_eq!(err.kind, Some(ErrorKind::ArmoringFromFuture));

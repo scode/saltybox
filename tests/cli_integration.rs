@@ -18,6 +18,15 @@ fn run_saltybox_with_passphrase(
     args: &[&str],
     passphrase: &str,
 ) -> Result<std::process::Output, std::io::Error> {
+    run_saltybox_with_passphrase_bytes(args, passphrase.as_bytes())
+}
+
+/// Like [`run_saltybox_with_passphrase`], for passphrases that are not
+/// valid UTF-8 — SPEC.md says the passphrase is arbitrary bytes.
+fn run_saltybox_with_passphrase_bytes(
+    args: &[&str],
+    passphrase: &[u8],
+) -> Result<std::process::Output, std::io::Error> {
     let mut child = Command::new(saltybox_bin())
         .arg("--passphrase-stdin")
         .args(args)
@@ -32,7 +41,7 @@ fn run_saltybox_with_passphrase(
         .stdin
         .as_mut()
         .expect("failed to open stdin")
-        .write_all(passphrase.as_bytes())
+        .write_all(passphrase)
         .err()
         .filter(|err| err.kind() != io::ErrorKind::BrokenPipe);
     drop(child.stdin.take());
@@ -51,6 +60,251 @@ fn testdata_path(filename: &str) -> PathBuf {
     path.push("testdata");
     path.push(filename);
     path
+}
+
+/// A known saltybox2 unit from testdata/golden-vectors-v2.json ("basic
+/// text"): passphrase "test", plaintext "test payload". Duplicated here as a
+/// literal so the CLI tests read as self-contained end-to-end scenarios.
+const V2_FIXTURE: &str = "saltybox2:AAECAwQFBgcICQoLDA0ODwAAIAAAAAADAAAAAQABAgMEBQYHCAkKCwwNDg8QERITFBUWFwzD0jEQJtkCSl0SBslcxc9u0TKUcd-9COPdAIg:end";
+const V2_FIXTURE_PASSPHRASE: &str = "test";
+const V2_FIXTURE_PLAINTEXT: &str = "test payload";
+
+/// Decrypting a saltybox2 file must work unconditionally — no flag or
+/// environment variable involved.
+#[test]
+fn test_decrypt_known_v2_ciphertext() {
+    let temp_dir = TempDir::new().unwrap();
+    let input = temp_dir.path().join("v2.salty");
+    let output = temp_dir.path().join("v2-decrypted.txt");
+
+    fs::write(&input, V2_FIXTURE).unwrap();
+
+    let result = run_saltybox_with_passphrase(
+        &[
+            "decrypt",
+            "-i",
+            input.to_str().unwrap(),
+            "-o",
+            output.to_str().unwrap(),
+        ],
+        V2_FIXTURE_PASSPHRASE,
+    )
+    .unwrap();
+
+    assert!(
+        result.status.success(),
+        "v2 decrypt failed: {}",
+        String::from_utf8_lossy(&result.stderr)
+    );
+    assert_eq!(fs::read_to_string(&output).unwrap(), V2_FIXTURE_PLAINTEXT);
+}
+
+/// A trailing newline after the ":end" marker is an everyday file artifact,
+/// not truncation: decrypt must accept it.
+#[test]
+fn test_decrypt_v2_accepts_trailing_newline() {
+    let temp_dir = TempDir::new().unwrap();
+    let input = temp_dir.path().join("v2-newline.salty");
+    let output = temp_dir.path().join("out.txt");
+
+    fs::write(&input, format!("{V2_FIXTURE}\n")).unwrap();
+
+    let result = run_saltybox_with_passphrase(
+        &[
+            "decrypt",
+            "-i",
+            input.to_str().unwrap(),
+            "-o",
+            output.to_str().unwrap(),
+        ],
+        V2_FIXTURE_PASSPHRASE,
+    )
+    .unwrap();
+
+    assert!(
+        result.status.success(),
+        "decrypt with trailing newline failed: {}",
+        String::from_utf8_lossy(&result.stderr)
+    );
+    assert_eq!(fs::read_to_string(&output).unwrap(), V2_FIXTURE_PLAINTEXT);
+}
+
+/// A saltybox2 paste that lost its tail is caught by the ":end" marker
+/// check. The wording must name the missing plain-text marker — it is a
+/// transport aid, and must not read as a cryptographic verdict.
+#[test]
+fn test_decrypt_v2_missing_end_marker_reports_truncation() {
+    let temp_dir = TempDir::new().unwrap();
+    let input = temp_dir.path().join("truncated-v2.salty");
+    let output = temp_dir.path().join("out.txt");
+
+    let pasted_short = &V2_FIXTURE[..V2_FIXTURE.len() - 7];
+    fs::write(&input, pasted_short).unwrap();
+
+    let result = run_saltybox_with_passphrase(
+        &[
+            "decrypt",
+            "-i",
+            input.to_str().unwrap(),
+            "-o",
+            output.to_str().unwrap(),
+        ],
+        V2_FIXTURE_PASSPHRASE,
+    )
+    .unwrap();
+
+    assert!(!result.status.success());
+    let stderr = String::from_utf8_lossy(&result.stderr);
+    assert!(
+        stderr.contains("does not end with the \":end\" marker")
+            && stderr.contains("likely truncated"),
+        "expected missing-marker truncation diagnostic, got: {stderr}"
+    );
+    assert!(!output.exists());
+}
+
+/// update must accept a saltybox2 file on its validation read.
+#[test]
+fn test_update_accepts_v2_encrypted_file() {
+    let temp_dir = TempDir::new().unwrap();
+    let new_plain = temp_dir.path().join("new.txt");
+    let encrypted = temp_dir.path().join("v2.salty");
+    let decrypted = temp_dir.path().join("decrypted.txt");
+
+    fs::write(&encrypted, V2_FIXTURE).unwrap();
+    fs::write(&new_plain, "updated via v2 validation").unwrap();
+
+    // Wrong passphrase must be caught by the v2 validation read.
+    let update_args = [
+        "update",
+        "-i",
+        new_plain.to_str().unwrap(),
+        "-o",
+        encrypted.to_str().unwrap(),
+    ];
+    let result = run_saltybox_with_passphrase(&update_args, "wrong").unwrap();
+    assert!(!result.status.success());
+    let stderr = String::from_utf8_lossy(&result.stderr);
+    assert!(
+        stderr.contains("failed to decrypt"),
+        "expected authentication failure from the v2 validation read, got: {stderr}"
+    );
+    assert_eq!(fs::read_to_string(&encrypted).unwrap(), V2_FIXTURE);
+
+    let result = run_saltybox_with_passphrase(&update_args, V2_FIXTURE_PASSPHRASE).unwrap();
+    assert!(
+        result.status.success(),
+        "update over v2 file failed: {}",
+        String::from_utf8_lossy(&result.stderr)
+    );
+
+    let result = run_saltybox_with_passphrase(
+        &[
+            "decrypt",
+            "-i",
+            encrypted.to_str().unwrap(),
+            "-o",
+            decrypted.to_str().unwrap(),
+        ],
+        V2_FIXTURE_PASSPHRASE,
+    )
+    .unwrap();
+    assert!(result.status.success());
+    assert_eq!(
+        fs::read_to_string(&decrypted).unwrap(),
+        "updated via v2 validation"
+    );
+}
+
+/// The transition plan (lore/2026-07-01-saltybox2.md) lands saltybox2 read
+/// support before any write-side change: encrypt must keep writing saltybox1
+/// until the default is deliberately flipped in a later step.
+#[test]
+fn test_encrypt_still_writes_saltybox1() {
+    let temp_dir = TempDir::new().unwrap();
+    let plaintext = temp_dir.path().join("plain.txt");
+    let encrypted = temp_dir.path().join("out.salty");
+
+    fs::write(&plaintext, "format check").unwrap();
+
+    let result = run_saltybox_with_passphrase(
+        &[
+            "encrypt",
+            "-i",
+            plaintext.to_str().unwrap(),
+            "-o",
+            encrypted.to_str().unwrap(),
+        ],
+        "test",
+    )
+    .unwrap();
+    assert!(result.status.success());
+    assert!(
+        fs::read_to_string(&encrypted)
+            .unwrap()
+            .starts_with("saltybox1:")
+    );
+}
+
+/// Bare "saltybox2" is a proper prefix of a supported magic and is
+/// diagnosed as likely truncation.
+#[test]
+fn test_decrypt_bare_supported_magic_prefix_is_truncation_error() {
+    let temp_dir = TempDir::new().unwrap();
+    let input = temp_dir.path().join("truncated.salty");
+    let output = temp_dir.path().join("out.txt");
+
+    fs::write(&input, "saltybox2").unwrap();
+
+    let result = run_saltybox_with_passphrase(
+        &[
+            "decrypt",
+            "-i",
+            input.to_str().unwrap(),
+            "-o",
+            output.to_str().unwrap(),
+        ],
+        "test",
+    )
+    .unwrap();
+
+    assert!(!result.status.success());
+    let stderr = String::from_utf8_lossy(&result.stderr);
+    assert!(
+        stderr.contains("likely truncated"),
+        "expected truncation diagnostic, got: {stderr}"
+    );
+    assert!(!output.exists());
+}
+
+/// Versions above the supported set must get the future-version diagnostic.
+#[test]
+fn test_decrypt_future_version_is_unsupported_error() {
+    let temp_dir = TempDir::new().unwrap();
+    let input = temp_dir.path().join("future.salty");
+    let output = temp_dir.path().join("out.txt");
+
+    fs::write(&input, "saltybox3:AAAA").unwrap();
+
+    let result = run_saltybox_with_passphrase(
+        &[
+            "decrypt",
+            "-i",
+            input.to_str().unwrap(),
+            "-o",
+            output.to_str().unwrap(),
+        ],
+        "test",
+    )
+    .unwrap();
+
+    assert!(!result.status.success());
+    let stderr = String::from_utf8_lossy(&result.stderr);
+    assert!(
+        stderr.contains("not a version we support"),
+        "expected future-version diagnostic, got: {stderr}"
+    );
+    assert!(!output.exists());
 }
 
 /// Decrypt known ciphertext.
@@ -184,6 +438,64 @@ fn test_output_path_without_directory_component_roundtrip() {
     assert_eq!(
         fs::read_to_string(temp_dir.path().join("decrypted.txt")).unwrap(),
         "bare relative output"
+    );
+}
+
+/// SPEC.md: the passphrase is used exactly as provided and need not be
+/// valid UTF-8. Pinned end-to-end through --passphrase-stdin so a
+/// String-typed regression in the binary's stdin wiring cannot hide behind
+/// the unit-level coverage.
+#[test]
+fn test_non_utf8_passphrase_roundtrips() {
+    let temp_dir = TempDir::new().unwrap();
+    let plaintext = temp_dir.path().join("plain.txt");
+    let encrypted = temp_dir.path().join("out.salty");
+    let decrypted = temp_dir.path().join("decrypted.txt");
+
+    let passphrase: &[u8] = &[0xff, 0xfe, 0x00, 0x01];
+    fs::write(&plaintext, "non-utf8 passphrase content").unwrap();
+
+    let result = run_saltybox_with_passphrase_bytes(
+        &[
+            "encrypt",
+            "-i",
+            plaintext.to_str().unwrap(),
+            "-o",
+            encrypted.to_str().unwrap(),
+        ],
+        passphrase,
+    )
+    .unwrap();
+    assert!(
+        result.status.success(),
+        "encrypt with non-UTF-8 passphrase failed: {}",
+        String::from_utf8_lossy(&result.stderr)
+    );
+
+    let decrypt_args = [
+        "decrypt",
+        "-i",
+        encrypted.to_str().unwrap(),
+        "-o",
+        decrypted.to_str().unwrap(),
+    ];
+
+    // A lossy re-encoding of the same bytes must NOT work: that would mean
+    // the passphrase was routed through a String somewhere.
+    let lossy = String::from_utf8_lossy(passphrase).into_owned();
+    let result = run_saltybox_with_passphrase(&decrypt_args, &lossy).unwrap();
+    assert!(!result.status.success());
+    assert!(!decrypted.exists());
+
+    let result = run_saltybox_with_passphrase_bytes(&decrypt_args, passphrase).unwrap();
+    assert!(
+        result.status.success(),
+        "decrypt with non-UTF-8 passphrase failed: {}",
+        String::from_utf8_lossy(&result.stderr)
+    );
+    assert_eq!(
+        fs::read_to_string(&decrypted).unwrap(),
+        "non-utf8 passphrase content"
     );
 }
 
