@@ -4,9 +4,8 @@
 //! and updating files using the saltybox format.
 
 use crate::error::{ErrorCategory, ErrorKind, Result, SaltyboxError};
+use crate::format;
 use crate::passphrase::PassphraseReader;
-use crate::secretcrypt_v1;
-use crate::varmor;
 use std::fs;
 use std::io::{self, Write};
 use std::path::Path;
@@ -29,9 +28,9 @@ pub fn encrypt_file(
 ) -> Result<()> {
     let plaintext = Zeroizing::new(fs::read(input_path).map_err(|e| read_error(input_path, e))?);
     let passphrase = passphrase_reader.read_passphrase()?;
-    let ciphertext = secretcrypt_v1::encrypt(&passphrase, &plaintext)
+    let armored = format::default_write_engine()
+        .encrypt(&passphrase, &plaintext)
         .map_err(|e| e.with_context("encryption failed"))?;
-    let armored = varmor::wrap(&ciphertext);
     write_file_secure(output_path, armored.as_bytes())
         .map_err(|e| e.with_context(format!("failed to write to {}", output_path.display())))?;
 
@@ -60,8 +59,12 @@ pub fn decrypt_file(
         )
     })?;
     let passphrase = passphrase_reader.read_passphrase()?;
-    let ciphertext = varmor::unwrap(&armored).map_err(|e| e.with_context("failed to unarmor"))?;
-    let plaintext = secretcrypt_v1::decrypt(&passphrase, &ciphertext)
+    let engine = format::engine_for(&armored).map_err(|e| e.with_context("failed to unarmor"))?;
+    let ciphertext = engine
+        .unarmor(&armored)
+        .map_err(|e| e.with_context("failed to unarmor"))?;
+    let plaintext = engine
+        .decrypt(&passphrase, &ciphertext)
         .map_err(|e| e.with_context("failed to decrypt"))?;
     write_file_secure(output_path, &plaintext)
         .map_err(|e| e.with_context(format!("failed to write to {}", output_path.display())))?;
@@ -106,15 +109,19 @@ pub fn update_file(
     let passphrase = passphrase_reader.read_passphrase()?;
 
     // Validate passphrase by decrypting existing file (discard plaintext)
-    let ciphertext = varmor::unwrap(&armored).map_err(|e| e.with_context("failed to unarmor"))?;
-    secretcrypt_v1::decrypt(&passphrase, &ciphertext)
+    let engine = format::engine_for(&armored).map_err(|e| e.with_context("failed to unarmor"))?;
+    let ciphertext = engine
+        .unarmor(&armored)
+        .map_err(|e| e.with_context("failed to unarmor"))?;
+    engine
+        .decrypt(&passphrase, &ciphertext)
         .map_err(|e| e.with_context("failed to decrypt"))?;
 
     let new_plaintext =
         Zeroizing::new(fs::read(plain_path).map_err(|e| read_error(plain_path, e))?);
-    let new_ciphertext = secretcrypt_v1::encrypt(&passphrase, &new_plaintext)
+    let new_armored = format::default_write_engine()
+        .encrypt(&passphrase, &new_plaintext)
         .map_err(|e| e.with_context("failed to encrypt"))?;
-    let new_armored = varmor::wrap(&new_ciphertext);
     write_file_secure(crypt_path, new_armored.as_bytes())?;
     Ok(())
 }
