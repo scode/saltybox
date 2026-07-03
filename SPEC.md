@@ -26,9 +26,12 @@ path. On Unix the final output file mode is 0600.
 ### encrypt
 
 `saltybox encrypt -i <input> -o <output>` reads plaintext from `<input>` — any byte sequence, including empty — and
-writes one armored saltybox unit to `<output>`. The output format is selected by the write-format override described
-below; by default the saltybox1 format is written. The output format never depends on any existing file. Salt and nonce
-are freshly generated at random for every encryption, so encrypting the same input twice produces different output.
+writes one armored saltybox unit to `<output>` in the saltybox2 format, with Argon2 parameters m=262144 KiB, t=3, p=1.
+The output format never depends on any existing file. Salt and nonce are freshly generated at random for every
+encryption, so encrypting the same input twice produces different output.
+
+saltybox1 output cannot be produced: that format is decrypt-only. Consequently, files written by this version cannot be
+read by saltybox versions that predate saltybox2 support.
 
 ### decrypt
 
@@ -65,22 +68,8 @@ The validation read decrypts `<existing>` and accepts the same formats as `decry
 failure — including a wrong passphrase — aborts the update and leaves `<existing>` unchanged.
 
 On successful validation, the new plaintext is encrypted with the validated passphrase and written atomically over
-`<existing>`. The output format is a function of the write-format override alone (below), never of the existing file's
-format: with the override unset, updating a saltybox2 file rewrites it as saltybox1 — a format downgrade.
-
-### Experimental write-format override
-
-NOTE: `SALTYBOX_EXPERIMENTAL_V2` is experimental and scheduled for removal when saltybox2 becomes the default write
-format. Do not build automation on it.
-
-The environment variable `SALTYBOX_EXPERIMENTAL_V2` selects the format that `encrypt` and `update` write:
-
-- Unset: saltybox1 is written.
-- Set to exactly `1`: saltybox2 is written, with Argon2 parameters m=262144 KiB, t=3, p=1.
-- Set to any other value (including values that are not valid Unicode): write commands fail with an error naming the
-  variable, rather than guessing.
-
-`decrypt` ignores the variable entirely, including invalid values.
+`<existing>`, always in the current write format (saltybox2), regardless of the existing file's format. Updating a
+saltybox1 file therefore rewrites it as saltybox2: this is the intended migration path for upgrading old files.
 
 ## File formats
 

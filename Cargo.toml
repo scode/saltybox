@@ -8,7 +8,7 @@ homepage = "https://github.com/scode/saltybox"
 license = "Apache-2.0 OR MIT"
 repository = "https://github.com/scode/saltybox"
 rust-version = "1.85" # Rust 2024 edition requires 1.85+
-description = "Passphrase-based file encryption tool using NaCl secretbox"
+description = "Passphrase-based file encryption tool"
 
 [[bin]]
 name = "saltybox"

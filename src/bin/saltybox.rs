@@ -1,7 +1,8 @@
 //! Saltybox CLI - Passphrase-based file encryption
 //!
-//! Command-line interface for encrypting, decrypting, and updating files using
-//! NaCl secretbox (XSalsa20Poly1305) with scrypt key derivation.
+//! Command-line interface for encrypting, decrypting, and updating files
+//! using the saltybox formats specified in SPEC.md (new files are written as
+//! saltybox2; saltybox1 remains decryptable).
 
 use clap::{Parser, Subcommand};
 use std::error::Error as StdError;
@@ -70,31 +71,27 @@ fn main() {
 
     let mut reader = get_passphrase_reader(cli.passphrase_stdin);
     let result = match cli.command {
-        Commands::Encrypt { input, output } => resolve_write_engine()
-            .and_then(|engine| file_ops::encrypt_file(&input, &output, &mut *reader, engine)),
+        Commands::Encrypt { input, output } => file_ops::encrypt_file(
+            &input,
+            &output,
+            &mut *reader,
+            format::default_write_engine(),
+        ),
         Commands::Decrypt { input, output } => {
             file_ops::decrypt_file(&input, &output, &mut *reader)
         }
-        Commands::Update { input, output } => resolve_write_engine()
-            .and_then(|engine| file_ops::update_file(&input, &output, &mut *reader, engine)),
+        Commands::Update { input, output } => file_ops::update_file(
+            &input,
+            &output,
+            &mut *reader,
+            format::default_write_engine(),
+        ),
     };
 
     if let Err(e) = result {
         report_error(&e);
         process::exit(1);
     }
-}
-
-/// Resolve which format write commands produce.
-///
-/// Only the write commands (encrypt, update) call this, so decrypt is
-/// unaffected by the experimental variable, invalid values included. A
-/// non-Unicode value cannot equal "1" after lossy conversion, so it is
-/// rejected like any other unexpected value.
-fn resolve_write_engine() -> saltybox::Result<&'static dyn format::FormatEngine> {
-    let value = std::env::var_os(format::EXPERIMENTAL_V2_ENV);
-    let value = value.as_ref().map(|value| value.to_string_lossy());
-    format::write_engine_for_override(value.as_deref())
 }
 
 fn get_passphrase_reader(use_stdin: bool) -> Box<dyn PassphraseReader> {

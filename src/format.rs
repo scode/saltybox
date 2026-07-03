@@ -81,39 +81,17 @@ impl FormatEngine for V1Engine {
 /// Engines are never removed: every format ever written stays decryptable.
 const ENGINES: &[&dyn FormatEngine] = &[&V1Engine, &V2Engine];
 
-/// The engine used for all newly written files.
+/// The engine used for all newly written files: saltybox2.
 ///
 /// The write side has no input magic to dispatch on, so this selection is the
 /// single point that decides what format saltybox produces. Decryption
 /// support is intentionally broader: every engine in [`ENGINES`] stays
-/// readable forever regardless of what this returns.
+/// readable forever regardless of what this returns. saltybox1 is
+/// decrypt-only — there is deliberately no way to write it from the CLI
+/// (tests exercise the v1 write direction through `secretcrypt_v1`
+/// directly).
 pub fn default_write_engine() -> &'static dyn FormatEngine {
-    &V1Engine
-}
-
-/// Environment variable gating the experimental saltybox2 write path.
-///
-/// Consulted only by commands that write (encrypt and update); decryption
-/// ignores it entirely. Scheduled for removal when saltybox2 becomes the
-/// default write format.
-pub const EXPERIMENTAL_V2_ENV: &str = "SALTYBOX_EXPERIMENTAL_V2";
-
-/// Resolve the write engine from the experimental override's value.
-///
-/// `None` (variable unset) selects the default write engine; exactly `"1"`
-/// selects saltybox2. Anything else is an error rather than a guess: a typo
-/// silently falling back to the old format would defeat the point of
-/// setting the variable.
-pub fn write_engine_for_override(value: Option<&str>) -> Result<&'static dyn FormatEngine> {
-    match value {
-        None => Ok(default_write_engine()),
-        Some("1") => Ok(&V2Engine),
-        Some(other) => Err(SaltyboxError::with_kind(
-            ErrorCategory::User,
-            ErrorKind::InvalidConfiguration,
-            format!("{EXPERIMENTAL_V2_ENV} must be \"1\" if set, but found {other:?}"),
-        )),
-    }
+    &V2Engine
 }
 
 /// Select the engine for an armored input and decode its payload in one step.
@@ -175,17 +153,23 @@ pub fn engine_for(armored: &str) -> Result<&'static dyn FormatEngine> {
 mod tests {
     use super::*;
 
+    /// Produce v1 armored data for read-side tests. The CLI can no longer
+    /// write v1, so tests construct it from the frozen v1 modules directly.
+    fn v1_armored(passphrase: &[u8], plaintext: &[u8]) -> String {
+        varmor::wrap(&secretcrypt_v1::encrypt(passphrase, plaintext).unwrap())
+    }
+
     #[test]
     fn test_engine_for_selects_v1() {
-        let armored = default_write_engine().encrypt(b"pw", b"payload").unwrap();
+        let armored = v1_armored(b"pw", b"payload");
         let engine = engine_for(&armored).unwrap();
         assert_eq!(engine.magic(), "saltybox1:");
     }
 
     #[test]
-    fn test_default_write_engine_writes_v1() {
+    fn test_default_write_engine_writes_v2() {
         let armored = default_write_engine().encrypt(b"pw", b"payload").unwrap();
-        assert!(armored.starts_with("saltybox1:"));
+        assert!(armored.starts_with("saltybox2:"));
     }
 
     #[test]
@@ -196,9 +180,9 @@ mod tests {
     }
 
     #[test]
-    fn test_roundtrip_through_dispatch() {
+    fn test_v1_roundtrip_through_dispatch() {
         let plaintext = b"hello world";
-        let armored = default_write_engine().encrypt(b"pw", plaintext).unwrap();
+        let armored = v1_armored(b"pw", plaintext);
 
         let (engine, payload) = decode(&armored).unwrap();
         let decrypted = engine.decrypt(b"pw", &payload).unwrap();
@@ -229,37 +213,6 @@ mod tests {
             .unarmor(input)
             .expect_err("expected base64 decode failure");
         assert_eq!(err.kind, Some(ErrorKind::ArmoringDecode));
-    }
-
-    #[test]
-    fn test_write_engine_override_unset_is_default() {
-        let engine = write_engine_for_override(None).unwrap();
-        assert_eq!(engine.magic(), default_write_engine().magic());
-    }
-
-    #[test]
-    fn test_write_engine_override_enabled_is_v2() {
-        let engine = write_engine_for_override(Some("1")).unwrap();
-        assert_eq!(engine.magic(), "saltybox2:");
-    }
-
-    #[test]
-    fn test_write_engine_override_rejects_other_values() {
-        for value in ["0", "true", "", " 1", "2"] {
-            let Err(err) = write_engine_for_override(Some(value)) else {
-                panic!("expected rejection of {value:?}")
-            };
-            assert_eq!(
-                err.kind,
-                Some(ErrorKind::InvalidConfiguration),
-                "value: {value:?}"
-            );
-            assert!(
-                err.message().contains(EXPERIMENTAL_V2_ENV),
-                "message must name the variable; got: {}",
-                err.message()
-            );
-        }
     }
 
     #[test]

@@ -20,8 +20,7 @@ const TEMPFILE_SUFFIX: &str = ".tmp";
 /// `passphrase_reader`, and writes the armored ciphertext to `output_path`.
 ///
 /// Which format is written is the caller's choice via `write_engine`; the
-/// CLI resolves it from the experimental override (see
-/// [`format::write_engine_for_override`]).
+/// CLI always passes [`format::default_write_engine`].
 ///
 /// Output is written atomically via a same-directory temporary file.
 /// On Unix systems, the final file mode is set to 0o600 (read/write for owner only).
@@ -371,30 +370,21 @@ mod tests {
         assert_eq!(fs::read(&decrypted_path).unwrap(), b"v2 write path");
     }
 
-    /// The output format follows the write engine alone: updating a v1 file
-    /// with the v2 engine upgrades it, and updating a v2 file with the v1
-    /// engine downgrades it. Both directions must round-trip.
+    /// The output format follows the write engine alone, never the input
+    /// file's format: updating a saltybox1 file with the (v2) default engine
+    /// upgrades it. This is the intended migration path for old files. The
+    /// v1 file is constructed from the frozen v1 modules directly, since
+    /// nothing exposes a v1 write engine anymore.
     #[test]
-    fn test_update_output_format_follows_write_engine_not_input() {
+    fn test_update_upgrades_v1_file_to_default_format() {
         let temp_dir = TempDir::new().unwrap();
         let plain_path = temp_dir.path().join("plain.txt");
         let crypt_path = temp_dir.path().join("crypt.txt.saltybox");
         let decrypted_path = temp_dir.path().join("decrypted.txt");
 
-        fs::write(&plain_path, b"original").unwrap();
-        let mut reader = ConstantPassphraseReader::new(b"pw".to_vec());
-        encrypt_file(
-            &plain_path,
-            &crypt_path,
-            &mut reader,
-            format::default_write_engine(),
-        )
-        .unwrap();
-        assert!(
-            fs::read_to_string(&crypt_path)
-                .unwrap()
-                .starts_with("saltybox1:")
-        );
+        let v1_armored =
+            crate::varmor::wrap(&crate::secretcrypt_v1::encrypt(b"pw", b"original").unwrap());
+        fs::write(&crypt_path, &v1_armored).unwrap();
 
         fs::write(&plain_path, b"upgraded").unwrap();
         let mut reader = ConstantPassphraseReader::new(b"pw".to_vec());
@@ -402,7 +392,7 @@ mod tests {
             &plain_path,
             &crypt_path,
             &mut reader,
-            &crate::format_v2::V2Engine,
+            format::default_write_engine(),
         )
         .unwrap();
         assert!(
@@ -410,28 +400,10 @@ mod tests {
                 .unwrap()
                 .starts_with("saltybox2:")
         );
+
         let mut reader = ConstantPassphraseReader::new(b"pw".to_vec());
         decrypt_file(&crypt_path, &decrypted_path, &mut reader).unwrap();
         assert_eq!(fs::read(&decrypted_path).unwrap(), b"upgraded");
-
-        fs::write(&plain_path, b"downgraded").unwrap();
-        let mut reader = ConstantPassphraseReader::new(b"pw".to_vec());
-        update_file(
-            &plain_path,
-            &crypt_path,
-            &mut reader,
-            format::default_write_engine(),
-        )
-        .unwrap();
-        assert!(
-            fs::read_to_string(&crypt_path)
-                .unwrap()
-                .starts_with("saltybox1:")
-        );
-
-        let mut reader = ConstantPassphraseReader::new(b"pw".to_vec());
-        decrypt_file(&crypt_path, &decrypted_path, &mut reader).unwrap();
-        assert_eq!(fs::read(&decrypted_path).unwrap(), b"downgraded");
     }
 
     #[test]

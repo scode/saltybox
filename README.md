@@ -64,8 +64,9 @@ same file) is rejected.
 - File writes use atomic same-directory temporary files named `.saltybox-*.tmp`. On Unix, these temporary files are
   written with mode `0600` and then atomically renamed into place. In the event of a crash, stale `.saltybox-*.tmp`
   files may remain and should still be private (`0600`).
-- The format is based upon well known algorithms with exceedingly simple layering on top. scrypt is used for key
-  stretching, nacl is used for encryption, and a base64 variant is used for encoding.
+- The formats are based upon well known algorithms with exceedingly simple layering on top. New files are written in the
+  saltybox2 format (Argon2id for key stretching, XChaCha20-Poly1305 for encryption); older saltybox1 files (scrypt and
+  NaCl secretbox) remain decryptable forever. A base64 variant is used for encoding in both formats.
 - The amount of code is relatively small and light on dependencies.
 
 # Guidance for use
@@ -93,6 +94,8 @@ external projects/people aside from the Rust language tools themselves remaining
 # Format/API contract
 
 - Future versions if any will remain able to decrypt data encrypted by older versions.
+- The reverse does not hold: newly written files use the saltybox2 format, which saltybox versions before 4.0 cannot
+  read. Running `update` on an old file also rewrites it as saltybox2 (this is the intended way to migrate old files).
 - The command line interface may change at any time. It is currently not intended for automated scripting (for this
   reason and others).
 - The code in this project is not meant to be consumed as a library and may be refactored or changed at will. It's
@@ -112,6 +115,9 @@ depend on for emergency life recovery media.
 
 # Details: Encrypted File Format (saltybox format version 1)
 
+NOTE: This section documents the legacy saltybox1 format, which current versions still decrypt but no longer write. New
+files use the saltybox2 format (Argon2id + XChaCha20-Poly1305); both formats are specified normatively in `SPEC.md`.
+
 Saltybox encrypts files using a passphrase-based encryption scheme. The output is a text file containing an armored
 (ASCII text) string that represents the encrypted data. This section documents the format.
 
@@ -122,8 +128,8 @@ Saltybox encrypts files using a passphrase-based encryption scheme. The output i
   ("binary format").
   - Uses URL-safe base64 alphabet: `-` and `_` instead of `+` and `/`
 - Example: `saltybox1:RF0qX8mpCMXVBq6zxHfamdiT64s6Pwvb99Qj9gV61sMAAAAAAAAAFE6RVTWMhBCMJGL0MmgdDUBHoJaW`
-  - The `1` in the prefix indicates the format version. Other versions use a different version number (decryption also
-    accepts the `saltybox2:` format specified in `SPEC.md`).
+  - The number in the prefix indicates the format version (`saltybox2:` files use the same armor scheme over the
+    saltybox2 binary payload).
 
 ## Binary Format
 

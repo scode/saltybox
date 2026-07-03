@@ -1,4 +1,4 @@
-//! Saltybox - Passphrase-based file encryption using NaCl secretbox
+//! Saltybox - Passphrase-based file encryption
 
 #![forbid(unsafe_code)]
 
