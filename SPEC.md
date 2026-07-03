@@ -26,9 +26,12 @@ report its path. On Unix the final output file mode is 0600.
 ### encrypt
 
 `saltybox encrypt -i <input> -o <output>` reads plaintext from `<input>` — any byte sequence, including empty — and
-writes one armored saltybox unit to `<output>` in the saltybox1 format. The output format never depends on any existing
-file. Salt and nonce are freshly generated at random for every encryption, so encrypting the same input twice produces
-different output.
+writes one armored saltybox unit to `<output>` in the saltybox2 format, with Argon2 parameters m=262144 KiB, t=3, p=1.
+The output format never depends on any existing file. Salt and nonce are freshly generated at random for every
+encryption, so encrypting the same input twice produces different output.
+
+saltybox1 output cannot be produced: that format is decrypt-only. Consequently, files written by this version cannot be
+read by saltybox versions that predate saltybox2 support.
 
 ### decrypt
 
@@ -68,8 +71,8 @@ with the same classifications (messages may differ in how they name the input fi
 passphrase — aborts the update and leaves `<existing>` unchanged.
 
 On successful validation, the new plaintext is encrypted with the validated passphrase and written atomically over
-`<existing>`, always in the current write format (saltybox1), regardless of the existing file's format: updating a
-saltybox2 file rewrites it as saltybox1 — a format downgrade.
+`<existing>`, always in the current write format (saltybox2), regardless of the existing file's format. Updating a
+saltybox1 file therefore rewrites it as saltybox2: this is the intended migration path for upgrading old files.
 
 ## File formats
 
