@@ -13,6 +13,7 @@
 //! because a new format was added.
 
 use crate::error::{ErrorCategory, ErrorKind, Result, SaltyboxError};
+use crate::format_v2::V2Engine;
 use crate::{secretcrypt_v1, varmor};
 use zeroize::Zeroizing;
 
@@ -76,7 +77,9 @@ impl FormatEngine for V1Engine {
 }
 
 /// Every supported engine, in the order the read side tries their magics.
-const ENGINES: &[&dyn FormatEngine] = &[&V1Engine];
+///
+/// Engines are never removed: every format ever written stays decryptable.
+const ENGINES: &[&dyn FormatEngine] = &[&V1Engine, &V2Engine];
 
 /// The engine used for all newly written files.
 ///
@@ -103,12 +106,13 @@ pub fn decode(armored: &str) -> Result<(&'static dyn FormatEngine, Vec<u8>)> {
 
 /// Select the engine for an armored input by its magic.
 ///
-/// Inputs matching no supported magic are diagnosed per scenario, mirroring
-/// the taxonomy [`varmor::unwrap`] established (and using its exact message
-/// strings, so dispatching here instead of in varmor is not a user-visible
-/// change): a proper prefix of a supported magic is likely truncation, a
-/// `saltybox` prefix that matches no supported version is from a future
-/// saltybox, and anything else is not saltybox data at all.
+/// Inputs matching no supported magic are diagnosed per scenario, using the
+/// exact message strings [`varmor::unwrap`] established: a proper prefix of
+/// any supported magic is likely truncation, a `saltybox` prefix that
+/// matches no supported version is from a future saltybox, and anything
+/// else is not saltybox data at all. Classification is relative to the full
+/// set of supported versions, so it legitimately differs from varmor's
+/// v1-only view (bare "saltybox2" is truncation here, not future-version).
 pub fn engine_for(armored: &str) -> Result<&'static dyn FormatEngine> {
     for engine in ENGINES {
         if armored.starts_with(engine.magic()) {
@@ -160,13 +164,28 @@ mod tests {
     }
 
     #[test]
+    fn test_engine_for_selects_v2() {
+        let armored = V2Engine.encrypt(b"pw", b"payload").unwrap();
+        let engine = engine_for(&armored).unwrap();
+        assert_eq!(engine.magic(), "saltybox2:");
+    }
+
+    #[test]
     fn test_roundtrip_through_dispatch() {
         let plaintext = b"hello world";
         let armored = default_write_engine().encrypt(b"pw", plaintext).unwrap();
 
-        let Ok((engine, payload)) = decode(&armored) else {
-            panic!("expected decode to succeed")
-        };
+        let (engine, payload) = decode(&armored).unwrap();
+        let decrypted = engine.decrypt(b"pw", &payload).unwrap();
+        assert_eq!(plaintext, &decrypted[..]);
+    }
+
+    #[test]
+    fn test_v2_roundtrip_through_dispatch() {
+        let plaintext = b"v2 dispatch roundtrip";
+        let armored = V2Engine.encrypt(b"pw", plaintext).unwrap();
+
+        let (engine, payload) = decode(&armored).unwrap();
         let decrypted = engine.decrypt(b"pw", &payload).unwrap();
         assert_eq!(plaintext, &decrypted[..]);
     }
@@ -178,15 +197,37 @@ mod tests {
         // unarmor reports the precise decode error), never to the dispatch
         // taxonomy's "unrecognized"/"truncated" diagnoses.
         let input = "saltybox1:bad$$";
-        let Ok(engine) = engine_for(input) else {
-            panic!("expected dispatch to succeed for {input:?}")
-        };
+        let engine = engine_for(input).unwrap();
         assert_eq!(engine.magic(), "saltybox1:");
 
         let err = engine
             .unarmor(input)
             .expect_err("expected base64 decode failure");
         assert_eq!(err.kind, Some(ErrorKind::ArmoringDecode));
+    }
+
+    #[test]
+    fn test_unarmor_rejects_non_canonical_base64() {
+        // SPEC.md requires canonical armor: padding characters ("AA==") and
+        // non-zero trailing bits ("AB") must be rejected. This currently
+        // holds via the base64 crate's URL_SAFE_NO_PAD defaults; pinning it
+        // here keeps a dependency upgrade from silently loosening the format.
+        for input in [
+            "saltybox1:AA==",
+            "saltybox2:AA==",
+            "saltybox1:AB",
+            "saltybox2:AB",
+        ] {
+            let engine = engine_for(input).unwrap();
+            let err = engine
+                .unarmor(input)
+                .expect_err(&format!("expected canonicality rejection for {input:?}"));
+            assert_eq!(
+                err.kind,
+                Some(ErrorKind::ArmoringDecode),
+                "input: {input:?}"
+            );
+        }
     }
 
     #[test]
@@ -203,14 +244,19 @@ mod tests {
         assert_eq!(err.kind, Some(ErrorKind::AuthenticationFailed));
     }
 
-    // The taxonomy tests below assert exact message strings: they pin that
-    // dispatch reproduces varmor's diagnostics byte for byte, which is what
-    // makes routing the CLI through this module a zero-functional-change
-    // refactor.
+    // The taxonomy tests below assert exact message strings. They are the
+    // authoritative pin of the user-visible diagnostics: dispatch inherited
+    // varmor's message strings verbatim, but the classification legitimately
+    // moved on when saltybox2 became supported (bare "saltybox2" is
+    // truncation here, while varmor's v1-only view still calls it a future
+    // version — varmor never sees such input from the CLI).
 
     #[test]
     fn test_prefix_of_magic_is_truncated() {
-        for input in ["", "salt", "saltybox", "saltybox1"] {
+        // "saltybox2" is a proper prefix of the (supported) saltybox2 magic,
+        // so it diagnoses as truncation — before v2 support it was diagnosed
+        // as an unsupported future version.
+        for input in ["", "salt", "saltybox", "saltybox1", "saltybox2"] {
             let Err(err) = engine_for(input) else {
                 panic!("expected error for {input:?}")
             };
@@ -229,7 +275,7 @@ mod tests {
 
     #[test]
     fn test_unsupported_version_is_from_future() {
-        for input in ["saltybox2", "saltybox999999:..."] {
+        for input in ["saltybox3", "saltybox3:...", "saltybox999999:..."] {
             let Err(err) = engine_for(input) else {
                 panic!("expected error for {input:?}")
             };

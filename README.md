@@ -122,8 +122,8 @@ Saltybox encrypts files using a passphrase-based encryption scheme. The output i
   ("binary format").
   - Uses URL-safe base64 alphabet: `-` and `_` instead of `+` and `/`
 - Example: `saltybox1:RF0qX8mpCMXVBq6zxHfamdiT64s6Pwvb99Qj9gV61sMAAAAAAAAAFE6RVTWMhBCMJGL0MmgdDUBHoJaW`
-  - The `1` in the prefix indicates the format version. Future versions would use a different version number (e.g.,
-    `saltybox2:`).
+  - The `1` in the prefix indicates the format version. Other versions use a different version number (decryption also
+    accepts the `saltybox2:` format specified in `SPEC.md`).
 
 ## Binary Format
 
