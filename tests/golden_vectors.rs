@@ -87,7 +87,7 @@ fn run_golden_vector_tests(indices: Option<&[usize]>) {
         }
 
         // Test deterministic encryption produces exact ciphertext
-        let encrypted = match saltybox::secretcrypt::encrypt_deterministic(
+        let encrypted = match saltybox::secretcrypt_v1::encrypt_deterministic(
             &passphrase,
             &expected_plaintext,
             &salt.try_into().unwrap(),
@@ -124,7 +124,7 @@ fn run_golden_vector_tests(indices: Option<&[usize]>) {
             }
         };
 
-        let decrypted = match saltybox::secretcrypt::decrypt(&passphrase, &unwrapped) {
+        let decrypted = match saltybox::secretcrypt_v1::decrypt(&passphrase, &unwrapped) {
             Ok(data) => data,
             Err(e) => {
                 eprintln!("Vector {}: FAILED to decrypt - {}", i, e);
