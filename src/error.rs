@@ -55,6 +55,8 @@ pub enum ErrorKind {
     SecretboxFailure,
     /// Interaction with the filesystem, stdin/stdout, or other I/O failed.
     Io,
+    /// A configuration input (e.g. an environment variable) has an invalid value.
+    InvalidConfiguration,
 }
 
 #[derive(Debug, Error)]

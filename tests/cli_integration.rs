@@ -18,13 +18,29 @@ fn run_saltybox_with_passphrase(
     args: &[&str],
     passphrase: &str,
 ) -> Result<std::process::Output, std::io::Error> {
-    let mut child = Command::new(saltybox_bin())
+    run_saltybox(args, passphrase, None)
+}
+
+fn run_saltybox(
+    args: &[&str],
+    passphrase: &str,
+    experimental_v2: Option<&str>,
+) -> Result<std::process::Output, std::io::Error> {
+    let mut command = Command::new(saltybox_bin());
+    command
         .arg("--passphrase-stdin")
         .args(args)
         .stdin(Stdio::piped())
         .stdout(Stdio::piped())
-        .stderr(Stdio::piped())
-        .spawn()?;
+        .stderr(Stdio::piped());
+    // The variable is controlled explicitly per test: never inherit it from
+    // the environment running the test suite. This configures the CHILD
+    // process environment only; the test process itself is never mutated.
+    command.env_remove(saltybox::format::EXPERIMENTAL_V2_ENV);
+    if let Some(value) = experimental_v2 {
+        command.env(saltybox::format::EXPERIMENTAL_V2_ENV, value);
+    }
+    let mut child = command.spawn()?;
 
     // A broken pipe means the child exited before reading all of stdin; the
     // exit status reports that failure more usefully than the write error.
@@ -124,6 +140,14 @@ fn test_update_accepts_v2_encrypted_file() {
         "update over v2 file failed: {}",
         String::from_utf8_lossy(&result.stderr)
     );
+    // Per SPEC.md, the output format follows the write-format override alone:
+    // with the override unset, updating a saltybox2 file downgrades it to
+    // saltybox1.
+    assert!(
+        fs::read_to_string(&encrypted)
+            .unwrap()
+            .starts_with("saltybox1:")
+    );
 
     let result = run_saltybox_with_passphrase(
         &[
@@ -141,6 +165,241 @@ fn test_update_accepts_v2_encrypted_file() {
         fs::read_to_string(&decrypted).unwrap(),
         "updated via v2 validation"
     );
+}
+
+/// With the override set to "1", encrypt writes saltybox2 — and the result
+/// must decrypt WITHOUT the override, since v2 decryption is unconditional.
+#[test]
+fn test_experimental_v2_encrypt_roundtrips_without_override() {
+    let temp_dir = TempDir::new().unwrap();
+    let plaintext = temp_dir.path().join("plain.txt");
+    let encrypted = temp_dir.path().join("out.salty");
+    let decrypted = temp_dir.path().join("decrypted.txt");
+
+    fs::write(&plaintext, "gated v2 write").unwrap();
+
+    let result = run_saltybox(
+        &[
+            "encrypt",
+            "-i",
+            plaintext.to_str().unwrap(),
+            "-o",
+            encrypted.to_str().unwrap(),
+        ],
+        "test",
+        Some("1"),
+    )
+    .unwrap();
+    assert!(
+        result.status.success(),
+        "gated encrypt failed: {}",
+        String::from_utf8_lossy(&result.stderr)
+    );
+    assert!(
+        fs::read_to_string(&encrypted)
+            .unwrap()
+            .starts_with("saltybox2:")
+    );
+
+    let result = run_saltybox_with_passphrase(
+        &[
+            "decrypt",
+            "-i",
+            encrypted.to_str().unwrap(),
+            "-o",
+            decrypted.to_str().unwrap(),
+        ],
+        "test",
+    )
+    .unwrap();
+    assert!(
+        result.status.success(),
+        "decrypt without override failed: {}",
+        String::from_utf8_lossy(&result.stderr)
+    );
+    assert_eq!(fs::read_to_string(&decrypted).unwrap(), "gated v2 write");
+}
+
+/// With the override set, update on a v1 file validates against v1 and
+/// rewrites as saltybox2 (the future migration path, gated for now).
+#[test]
+fn test_experimental_v2_update_upgrades_v1_file() {
+    let temp_dir = TempDir::new().unwrap();
+    let plaintext = temp_dir.path().join("plain.txt");
+    let encrypted = temp_dir.path().join("out.salty");
+    let decrypted = temp_dir.path().join("decrypted.txt");
+
+    fs::write(&plaintext, "v1 content").unwrap();
+    let result = run_saltybox_with_passphrase(
+        &[
+            "encrypt",
+            "-i",
+            plaintext.to_str().unwrap(),
+            "-o",
+            encrypted.to_str().unwrap(),
+        ],
+        "test",
+    )
+    .unwrap();
+    assert!(result.status.success());
+    assert!(
+        fs::read_to_string(&encrypted)
+            .unwrap()
+            .starts_with("saltybox1:")
+    );
+
+    fs::write(&plaintext, "upgraded content").unwrap();
+    let result = run_saltybox(
+        &[
+            "update",
+            "-i",
+            plaintext.to_str().unwrap(),
+            "-o",
+            encrypted.to_str().unwrap(),
+        ],
+        "test",
+        Some("1"),
+    )
+    .unwrap();
+    assert!(
+        result.status.success(),
+        "gated update failed: {}",
+        String::from_utf8_lossy(&result.stderr)
+    );
+    assert!(
+        fs::read_to_string(&encrypted)
+            .unwrap()
+            .starts_with("saltybox2:")
+    );
+
+    let result = run_saltybox_with_passphrase(
+        &[
+            "decrypt",
+            "-i",
+            encrypted.to_str().unwrap(),
+            "-o",
+            decrypted.to_str().unwrap(),
+        ],
+        "test",
+    )
+    .unwrap();
+    assert!(result.status.success());
+    assert_eq!(fs::read_to_string(&decrypted).unwrap(), "upgraded content");
+}
+
+/// SPEC.md: override values that are not valid Unicode are rejected like any
+/// other non-"1" value. Unix-only because constructing a non-UTF-8 OsString
+/// portably requires the Unix extension trait. The value is set on the child
+/// process only.
+#[test]
+#[cfg(unix)]
+fn test_experimental_v2_non_unicode_value_fails_writes() {
+    use std::ffi::OsString;
+    use std::os::unix::ffi::OsStringExt;
+
+    let temp_dir = TempDir::new().unwrap();
+    let plaintext = temp_dir.path().join("plain.txt");
+    let encrypted = temp_dir.path().join("out.salty");
+
+    fs::write(&plaintext, "content").unwrap();
+
+    let mut child = Command::new(saltybox_bin())
+        .arg("--passphrase-stdin")
+        .args([
+            "encrypt",
+            "-i",
+            plaintext.to_str().unwrap(),
+            "-o",
+            encrypted.to_str().unwrap(),
+        ])
+        .env_remove(saltybox::format::EXPERIMENTAL_V2_ENV)
+        .env(
+            saltybox::format::EXPERIMENTAL_V2_ENV,
+            OsString::from_vec(vec![0xff, 0xfe]),
+        )
+        .stdin(Stdio::piped())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .spawn()
+        .unwrap();
+    // The child is expected to reject the variable before ever reading the
+    // passphrase, so a broken pipe on this write is the normal outcome.
+    let _ = child.stdin.as_mut().unwrap().write_all(b"test");
+    drop(child.stdin.take());
+    let result = child.wait_with_output().unwrap();
+
+    assert!(!result.status.success());
+    let stderr = String::from_utf8_lossy(&result.stderr);
+    assert!(
+        stderr.contains("SALTYBOX_EXPERIMENTAL_V2"),
+        "error must name the variable, got: {stderr}"
+    );
+    assert!(!encrypted.exists());
+}
+
+/// Any override value other than exactly "1" fails write commands with an
+/// error naming the variable — while decrypt ignores the variable entirely.
+#[test]
+fn test_experimental_v2_invalid_value_fails_writes_but_not_decrypt() {
+    let temp_dir = TempDir::new().unwrap();
+    let plaintext = temp_dir.path().join("plain.txt");
+    let encrypted = temp_dir.path().join("out.salty");
+    let decrypted = temp_dir.path().join("decrypted.txt");
+
+    fs::write(&plaintext, "content").unwrap();
+
+    let result = run_saltybox(
+        &[
+            "encrypt",
+            "-i",
+            plaintext.to_str().unwrap(),
+            "-o",
+            encrypted.to_str().unwrap(),
+        ],
+        "test",
+        Some("0"),
+    )
+    .unwrap();
+    assert!(!result.status.success());
+    let stderr = String::from_utf8_lossy(&result.stderr);
+    assert!(
+        stderr.contains("SALTYBOX_EXPERIMENTAL_V2"),
+        "error must name the variable, got: {stderr}"
+    );
+    assert!(!encrypted.exists());
+
+    // decrypt is unaffected by the variable, invalid values included.
+    let result = run_saltybox_with_passphrase(
+        &[
+            "encrypt",
+            "-i",
+            plaintext.to_str().unwrap(),
+            "-o",
+            encrypted.to_str().unwrap(),
+        ],
+        "test",
+    )
+    .unwrap();
+    assert!(result.status.success());
+
+    let result = run_saltybox(
+        &[
+            "decrypt",
+            "-i",
+            encrypted.to_str().unwrap(),
+            "-o",
+            decrypted.to_str().unwrap(),
+        ],
+        "test",
+        Some("garbage"),
+    )
+    .unwrap();
+    assert!(
+        result.status.success(),
+        "decrypt must ignore the variable: {}",
+        String::from_utf8_lossy(&result.stderr)
+    );
+    assert_eq!(fs::read_to_string(&decrypted).unwrap(), "content");
 }
 
 /// Pre-flip, encrypt must still write saltybox1 output only.
@@ -330,6 +589,7 @@ fn test_output_path_without_directory_component_roundtrip() {
             "-o",
             "out.salty",
         ])
+        .env_remove(saltybox::format::EXPERIMENTAL_V2_ENV)
         .current_dir(temp_dir.path())
         .stdin(Stdio::piped())
         .stdout(Stdio::piped())
@@ -347,6 +607,7 @@ fn test_output_path_without_directory_component_roundtrip() {
     let mut child = Command::new(saltybox_bin())
         .arg("--passphrase-stdin")
         .args(["decrypt", "-i", "out.salty", "-o", "decrypted.txt"])
+        .env_remove(saltybox::format::EXPERIMENTAL_V2_ENV)
         .current_dir(temp_dir.path())
         .stdin(Stdio::piped())
         .stdout(Stdio::piped())

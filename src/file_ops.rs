@@ -19,16 +19,21 @@ const TEMPFILE_SUFFIX: &str = ".tmp";
 /// Reads plaintext from `input_path`, encrypts it using a passphrase from
 /// `passphrase_reader`, and writes the armored ciphertext to `output_path`.
 ///
+/// Which format is written is the caller's choice via `write_engine`; the
+/// CLI resolves it from the experimental override (see
+/// [`format::write_engine_for_override`]).
+///
 /// Output is written atomically via a same-directory temporary file.
 /// On Unix systems, the final file mode is set to 0o600 (read/write for owner only).
 pub fn encrypt_file(
     input_path: &Path,
     output_path: &Path,
     passphrase_reader: &mut dyn PassphraseReader,
+    write_engine: &dyn format::FormatEngine,
 ) -> Result<()> {
     let plaintext = Zeroizing::new(fs::read(input_path).map_err(|e| read_error(input_path, e))?);
     let passphrase = passphrase_reader.read_passphrase()?;
-    let armored = format::default_write_engine()
+    let armored = write_engine
         .encrypt(&passphrase, &plaintext)
         .map_err(|e| e.with_context("encryption failed"))?;
     write_file_secure(output_path, armored.as_bytes())
@@ -81,10 +86,15 @@ pub fn decrypt_file(
 /// never a partial/corrupted file.
 ///
 /// The passphrase validation prevents accidental passphrase changes.
+///
+/// The output format follows `write_engine` alone, never the existing file's
+/// format: updating with a different engine than the file was written with
+/// silently converts it (this is the intended migration path).
 pub fn update_file(
     plain_path: &Path,
     crypt_path: &Path,
     passphrase_reader: &mut dyn PassphraseReader,
+    write_engine: &dyn format::FormatEngine,
 ) -> Result<()> {
     // Prevent treating the existing ciphertext as new plaintext when paths alias.
     if update_paths_conflict(plain_path, crypt_path) {
@@ -115,7 +125,7 @@ pub fn update_file(
 
     let new_plaintext =
         Zeroizing::new(fs::read(plain_path).map_err(|e| read_error(plain_path, e))?);
-    let new_armored = format::default_write_engine()
+    let new_armored = write_engine
         .encrypt(&passphrase, &new_plaintext)
         .map_err(|e| e.with_context("failed to encrypt"))?;
     write_file_secure(crypt_path, new_armored.as_bytes())?;
@@ -318,13 +328,110 @@ mod tests {
         fs::write(&plain_path, plaintext).unwrap();
 
         let mut reader = ConstantPassphraseReader::new(b"test password".to_vec());
-        encrypt_file(&plain_path, &crypt_path, &mut reader).unwrap();
+        encrypt_file(
+            &plain_path,
+            &crypt_path,
+            &mut reader,
+            format::default_write_engine(),
+        )
+        .unwrap();
         assert!(crypt_path.exists());
 
         let mut reader = ConstantPassphraseReader::new(b"test password".to_vec());
         decrypt_file(&crypt_path, &decrypted_path, &mut reader).unwrap();
         let decrypted = fs::read(&decrypted_path).unwrap();
         assert_eq!(decrypted, plaintext);
+    }
+
+    #[test]
+    fn test_encrypt_file_with_v2_engine_roundtrips() {
+        let temp_dir = TempDir::new().unwrap();
+        let plain_path = temp_dir.path().join("plain.txt");
+        let crypt_path = temp_dir.path().join("crypt.txt.saltybox");
+        let decrypted_path = temp_dir.path().join("decrypted.txt");
+
+        fs::write(&plain_path, b"v2 write path").unwrap();
+
+        let mut reader = ConstantPassphraseReader::new(b"pw".to_vec());
+        encrypt_file(
+            &plain_path,
+            &crypt_path,
+            &mut reader,
+            &crate::format_v2::V2Engine,
+        )
+        .unwrap();
+        assert!(
+            fs::read_to_string(&crypt_path)
+                .unwrap()
+                .starts_with("saltybox2:")
+        );
+
+        let mut reader = ConstantPassphraseReader::new(b"pw".to_vec());
+        decrypt_file(&crypt_path, &decrypted_path, &mut reader).unwrap();
+        assert_eq!(fs::read(&decrypted_path).unwrap(), b"v2 write path");
+    }
+
+    /// The output format follows the write engine alone: updating a v1 file
+    /// with the v2 engine upgrades it, and updating a v2 file with the v1
+    /// engine downgrades it. Both directions must round-trip.
+    #[test]
+    fn test_update_output_format_follows_write_engine_not_input() {
+        let temp_dir = TempDir::new().unwrap();
+        let plain_path = temp_dir.path().join("plain.txt");
+        let crypt_path = temp_dir.path().join("crypt.txt.saltybox");
+        let decrypted_path = temp_dir.path().join("decrypted.txt");
+
+        fs::write(&plain_path, b"original").unwrap();
+        let mut reader = ConstantPassphraseReader::new(b"pw".to_vec());
+        encrypt_file(
+            &plain_path,
+            &crypt_path,
+            &mut reader,
+            format::default_write_engine(),
+        )
+        .unwrap();
+        assert!(
+            fs::read_to_string(&crypt_path)
+                .unwrap()
+                .starts_with("saltybox1:")
+        );
+
+        fs::write(&plain_path, b"upgraded").unwrap();
+        let mut reader = ConstantPassphraseReader::new(b"pw".to_vec());
+        update_file(
+            &plain_path,
+            &crypt_path,
+            &mut reader,
+            &crate::format_v2::V2Engine,
+        )
+        .unwrap();
+        assert!(
+            fs::read_to_string(&crypt_path)
+                .unwrap()
+                .starts_with("saltybox2:")
+        );
+        let mut reader = ConstantPassphraseReader::new(b"pw".to_vec());
+        decrypt_file(&crypt_path, &decrypted_path, &mut reader).unwrap();
+        assert_eq!(fs::read(&decrypted_path).unwrap(), b"upgraded");
+
+        fs::write(&plain_path, b"downgraded").unwrap();
+        let mut reader = ConstantPassphraseReader::new(b"pw".to_vec());
+        update_file(
+            &plain_path,
+            &crypt_path,
+            &mut reader,
+            format::default_write_engine(),
+        )
+        .unwrap();
+        assert!(
+            fs::read_to_string(&crypt_path)
+                .unwrap()
+                .starts_with("saltybox1:")
+        );
+
+        let mut reader = ConstantPassphraseReader::new(b"pw".to_vec());
+        decrypt_file(&crypt_path, &decrypted_path, &mut reader).unwrap();
+        assert_eq!(fs::read(&decrypted_path).unwrap(), b"downgraded");
     }
 
     #[test]
@@ -338,13 +445,25 @@ mod tests {
         fs::write(&plain1_path, plaintext1).unwrap();
 
         let mut reader = ConstantPassphraseReader::new(b"test password".to_vec());
-        encrypt_file(&plain1_path, &crypt_path, &mut reader).unwrap();
+        encrypt_file(
+            &plain1_path,
+            &crypt_path,
+            &mut reader,
+            format::default_write_engine(),
+        )
+        .unwrap();
 
         let plaintext2 = b"Updated content";
         fs::write(&plain2_path, plaintext2).unwrap();
 
         let mut reader = ConstantPassphraseReader::new(b"test password".to_vec());
-        update_file(&plain2_path, &crypt_path, &mut reader).unwrap();
+        update_file(
+            &plain2_path,
+            &crypt_path,
+            &mut reader,
+            format::default_write_engine(),
+        )
+        .unwrap();
 
         let decrypted_path = temp_dir.path().join("decrypted.txt");
         let mut reader = ConstantPassphraseReader::new(b"test password".to_vec());
@@ -364,10 +483,21 @@ mod tests {
         fs::write(&plain_path, original).unwrap();
 
         let mut reader = ConstantPassphraseReader::new(b"test password".to_vec());
-        encrypt_file(&plain_path, &crypt_path, &mut reader).unwrap();
+        encrypt_file(
+            &plain_path,
+            &crypt_path,
+            &mut reader,
+            format::default_write_engine(),
+        )
+        .unwrap();
 
         let mut reader = ConstantPassphraseReader::new(b"test password".to_vec());
-        let result = update_file(&crypt_path, &crypt_path, &mut reader);
+        let result = update_file(
+            &crypt_path,
+            &crypt_path,
+            &mut reader,
+            format::default_write_engine(),
+        );
 
         let err = result.expect_err("expected path conflict failure");
         assert_eq!(err.category, ErrorCategory::User);
@@ -396,12 +526,23 @@ mod tests {
         fs::write(&plain_path, original).unwrap();
 
         let mut reader = ConstantPassphraseReader::new(b"test password".to_vec());
-        encrypt_file(&plain_path, &crypt_path, &mut reader).unwrap();
+        encrypt_file(
+            &plain_path,
+            &crypt_path,
+            &mut reader,
+            format::default_write_engine(),
+        )
+        .unwrap();
 
         fs::create_dir(&alias_dir).unwrap();
 
         let mut reader = ConstantPassphraseReader::new(b"test password".to_vec());
-        let result = update_file(&alias_path, &crypt_path, &mut reader);
+        let result = update_file(
+            &alias_path,
+            &crypt_path,
+            &mut reader,
+            format::default_write_engine(),
+        );
 
         let err = result.expect_err("expected canonical path conflict failure");
         assert_eq!(err.category, ErrorCategory::User);
@@ -430,14 +571,25 @@ mod tests {
         fs::write(&plain_path, original).unwrap();
 
         let mut reader = ConstantPassphraseReader::new(b"test password".to_vec());
-        encrypt_file(&plain_path, &crypt_path, &mut reader).unwrap();
+        encrypt_file(
+            &plain_path,
+            &crypt_path,
+            &mut reader,
+            format::default_write_engine(),
+        )
+        .unwrap();
 
         // A hardlink canonicalizes to its own path, so only the inode check
         // can catch this alias.
         fs::hard_link(&crypt_path, &hardlink_path).unwrap();
 
         let mut reader = ConstantPassphraseReader::new(b"test password".to_vec());
-        let result = update_file(&hardlink_path, &crypt_path, &mut reader);
+        let result = update_file(
+            &hardlink_path,
+            &crypt_path,
+            &mut reader,
+            format::default_write_engine(),
+        );
 
         let err = result.expect_err("expected hardlink path conflict failure");
         assert_eq!(err.category, ErrorCategory::User);
@@ -463,11 +615,22 @@ mod tests {
 
         fs::write(&plain1_path, b"Initial").unwrap();
         let mut reader = ConstantPassphraseReader::new(b"correct password".to_vec());
-        encrypt_file(&plain1_path, &crypt_path, &mut reader).unwrap();
+        encrypt_file(
+            &plain1_path,
+            &crypt_path,
+            &mut reader,
+            format::default_write_engine(),
+        )
+        .unwrap();
 
         fs::write(&plain2_path, b"Updated").unwrap();
         let mut reader = ConstantPassphraseReader::new(b"wrong password".to_vec());
-        let result = update_file(&plain2_path, &crypt_path, &mut reader);
+        let result = update_file(
+            &plain2_path,
+            &crypt_path,
+            &mut reader,
+            format::default_write_engine(),
+        );
 
         let err = result.expect_err("expected authentication failure");
         assert_eq!(err.kind, Some(ErrorKind::AuthenticationFailed));
@@ -489,7 +652,13 @@ mod tests {
         fs::write(&plain_path, b"test").unwrap();
 
         let mut reader = ConstantPassphraseReader::new(b"test".to_vec());
-        encrypt_file(&plain_path, &crypt_path, &mut reader).unwrap();
+        encrypt_file(
+            &plain_path,
+            &crypt_path,
+            &mut reader,
+            format::default_write_engine(),
+        )
+        .unwrap();
 
         let metadata = fs::metadata(&crypt_path).unwrap();
         let permissions = metadata.permissions();
@@ -510,7 +679,13 @@ mod tests {
         fs::set_permissions(&crypt_path, permissions).unwrap();
 
         let mut reader = ConstantPassphraseReader::new(b"test".to_vec());
-        encrypt_file(&plain_path, &crypt_path, &mut reader).unwrap();
+        encrypt_file(
+            &plain_path,
+            &crypt_path,
+            &mut reader,
+            format::default_write_engine(),
+        )
+        .unwrap();
 
         let metadata = fs::metadata(&crypt_path).unwrap();
         let permissions = metadata.permissions();
@@ -528,7 +703,13 @@ mod tests {
         fs::write(&plain_path, b"secret").unwrap();
 
         let mut reader = ConstantPassphraseReader::new(b"test".to_vec());
-        encrypt_file(&plain_path, &crypt_path, &mut reader).unwrap();
+        encrypt_file(
+            &plain_path,
+            &crypt_path,
+            &mut reader,
+            format::default_write_engine(),
+        )
+        .unwrap();
 
         fs::write(&decrypted_path, b"old plaintext").unwrap();
         let mut permissions = fs::metadata(&decrypted_path).unwrap().permissions();
@@ -557,7 +738,13 @@ mod tests {
         fs::write(&decrypted_path, b"old plaintext").unwrap();
 
         let mut reader = ConstantPassphraseReader::new(b"test".to_vec());
-        encrypt_file(&plain_path, &crypt_path, &mut reader).unwrap();
+        encrypt_file(
+            &plain_path,
+            &crypt_path,
+            &mut reader,
+            format::default_write_engine(),
+        )
+        .unwrap();
 
         let original_permissions = fs::metadata(&output_dir).unwrap().permissions();
         let mut unwritable_permissions = original_permissions.clone();
@@ -593,7 +780,12 @@ mod tests {
         fs::write(&plain_path, b"secret").unwrap();
 
         let mut reader = ConstantPassphraseReader::new(b"test".to_vec());
-        let result = encrypt_file(&plain_path, &crypt_path, &mut reader);
+        let result = encrypt_file(
+            &plain_path,
+            &crypt_path,
+            &mut reader,
+            format::default_write_engine(),
+        );
 
         let err = result.expect_err("expected missing output directory failure");
         assert_eq!(err.category, ErrorCategory::User);
@@ -628,7 +820,13 @@ mod tests {
         fs::write(&plain_path, b"secret").unwrap();
 
         let mut reader = ConstantPassphraseReader::new(b"correct".to_vec());
-        encrypt_file(&plain_path, &crypt_path, &mut reader).unwrap();
+        encrypt_file(
+            &plain_path,
+            &crypt_path,
+            &mut reader,
+            format::default_write_engine(),
+        )
+        .unwrap();
 
         let mut reader = ConstantPassphraseReader::new(b"wrong".to_vec());
         let result = decrypt_file(&crypt_path, &decrypted_path, &mut reader);
@@ -648,7 +846,13 @@ mod tests {
         fs::write(&decrypted_path, b"old plaintext").unwrap();
 
         let mut reader = ConstantPassphraseReader::new(b"correct".to_vec());
-        encrypt_file(&plain_path, &crypt_path, &mut reader).unwrap();
+        encrypt_file(
+            &plain_path,
+            &crypt_path,
+            &mut reader,
+            format::default_write_engine(),
+        )
+        .unwrap();
 
         let mut reader = ConstantPassphraseReader::new(b"wrong".to_vec());
         assert!(decrypt_file(&crypt_path, &decrypted_path, &mut reader).is_err());
@@ -683,7 +887,12 @@ mod tests {
         fs::write(&crypt_path, [0xff]).unwrap();
 
         let mut reader = ConstantPassphraseReader::new(b"test".to_vec());
-        let result = update_file(&plain_path, &crypt_path, &mut reader);
+        let result = update_file(
+            &plain_path,
+            &crypt_path,
+            &mut reader,
+            format::default_write_engine(),
+        );
 
         let err = result.expect_err("expected UTF-8 rejection");
         assert_eq!(err.category, ErrorCategory::User);
@@ -702,7 +911,13 @@ mod tests {
         fs::write(&plain_path, b"").unwrap();
 
         let mut reader = ConstantPassphraseReader::new(b"test".to_vec());
-        encrypt_file(&plain_path, &crypt_path, &mut reader).unwrap();
+        encrypt_file(
+            &plain_path,
+            &crypt_path,
+            &mut reader,
+            format::default_write_engine(),
+        )
+        .unwrap();
 
         let mut reader = ConstantPassphraseReader::new(b"test".to_vec());
         decrypt_file(&crypt_path, &decrypted_path, &mut reader).unwrap();
