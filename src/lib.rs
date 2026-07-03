@@ -5,6 +5,7 @@
 pub mod error;
 pub mod file_ops;
 pub mod format;
+pub mod format_v2;
 pub mod passphrase;
 pub mod secretcrypt_v1;
 pub mod varmor;

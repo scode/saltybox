@@ -152,8 +152,8 @@ The encryption key is derived from the user-provided passphrase and the salt usi
 
 # Golden Test Vectors
 
-The repository includes comprehensive test vectors in `testdata/golden-vectors.json` for purpose of
-correctness/compatibility testing.
+The repository includes comprehensive test vectors in `testdata/golden-vectors.json` and
+`testdata/golden-vectors-v2.json` for purpose of correctness/compatibility testing.
 
 ## Usage
 
@@ -161,6 +161,7 @@ Run golden vector tests:
 
 ```
 cargo test --test golden_vectors -- --ignored
+cargo test --test golden_vectors_v2
 ```
 
 (The arguments are required because by default not all golden vectors are tested in order to avoid adding multiple

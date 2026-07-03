@@ -15,7 +15,17 @@ name = "saltybox"
 path = "src/bin/saltybox.rs"
 
 [dependencies]
+# std: saltybox errors carry their underlying cause as a source, so the CLI
+# can print a "caused by" chain. That requires the cause to implement
+# std::error::Error, which argon2::Error only does with the std feature
+# enabled; without it, argon2 failures would have to be flattened into
+# plain text messages.
+# zeroize: makes argon2 wipe the internal buffers that are equivalent to the
+# derived key (the passphrase-derived initial hash and the final block hash)
+# instead of leaving them behind in freed memory.
+argon2 = { version = "0.5", features = ["std", "zeroize"] }
 base64 = "0.22"
+chacha20poly1305 = "0.10"
 clap = { version = "4.5", features = ["derive"] }
 crypto_secretbox = "0.1"
 rand = "0.10"
@@ -29,13 +39,19 @@ zeroize = "1.8"
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
 
-# Compile scrypt with optimizations even in dev/test builds. scrypt
-# is intentionally slow, and for all practical purposes we assume
-# that scrypt is not buggy and not under testing.
+# Compile the key-derivation crates with optimizations even in dev/test
+# builds. They are intentionally slow, and for all practical purposes we
+# assume they are not buggy and not under testing.
 [profile.dev.package.scrypt]
 opt-level = 3
 
 [profile.test.package.scrypt]
+opt-level = 3
+
+[profile.dev.package.argon2]
+opt-level = 3
+
+[profile.test.package.argon2]
 opt-level = 3
 
 # The profile that 'dist' will build with
