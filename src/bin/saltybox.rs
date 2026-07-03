@@ -9,6 +9,7 @@ use std::path::PathBuf;
 use std::process;
 
 use saltybox::file_ops;
+use saltybox::format;
 use saltybox::passphrase::{PassphraseReader, ReaderPassphraseReader, TerminalPassphraseReader};
 
 #[derive(Parser)]
@@ -69,19 +70,31 @@ fn main() {
 
     let mut reader = get_passphrase_reader(cli.passphrase_stdin);
     let result = match cli.command {
-        Commands::Encrypt { input, output } => {
-            file_ops::encrypt_file(&input, &output, &mut *reader)
-        }
+        Commands::Encrypt { input, output } => resolve_write_engine()
+            .and_then(|engine| file_ops::encrypt_file(&input, &output, &mut *reader, engine)),
         Commands::Decrypt { input, output } => {
             file_ops::decrypt_file(&input, &output, &mut *reader)
         }
-        Commands::Update { input, output } => file_ops::update_file(&input, &output, &mut *reader),
+        Commands::Update { input, output } => resolve_write_engine()
+            .and_then(|engine| file_ops::update_file(&input, &output, &mut *reader, engine)),
     };
 
     if let Err(e) = result {
         report_error(&e);
         process::exit(1);
     }
+}
+
+/// Resolve which format write commands produce.
+///
+/// Only the write commands (encrypt, update) call this, so decrypt is
+/// unaffected by the experimental variable, invalid values included. A
+/// non-Unicode value cannot equal "1" after lossy conversion, so it is
+/// rejected like any other unexpected value.
+fn resolve_write_engine() -> saltybox::Result<&'static dyn format::FormatEngine> {
+    let value = std::env::var_os(format::EXPERIMENTAL_V2_ENV)
+        .map(|value| value.to_string_lossy().into_owned());
+    format::write_engine_for_override(value.as_deref())
 }
 
 fn get_passphrase_reader(use_stdin: bool) -> Box<dyn PassphraseReader> {

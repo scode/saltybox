@@ -15,8 +15,18 @@ All commands take a passphrase: interactively from the terminal with echo disabl
 newlines are NOT stripped, and the passphrase need not be valid UTF-8). On any failure, commands exit with a nonzero
 status and report the error on standard error.
 
-Not yet specified: `encrypt`, and `update`'s write behavior (which format it writes and how). `update`'s validation read
-IS specified below.
+Commands write their output file atomically via a same-directory private temporary file: on success the output contains
+exactly the intended bytes; on any failure an existing file at the output path is left unchanged and no partial file
+ever appears there. A failed or interrupted write may leave the temporary file (owner-only permissions, name prefixed
+`.saltybox-`) behind in the output directory; rename failures report its path. On Unix the final output file mode
+is 0600.
+
+### encrypt
+
+`saltybox encrypt -i <input> -o <output>` reads plaintext from `<input>` — any byte sequence, including empty — and
+writes one armored saltybox unit to `<output>`. The output format is selected by the write-format override described
+below; by default the saltybox1 format is written. The output format never depends on any existing file. Salt and nonce
+are freshly generated at random for every encryption, so encrypting the same input twice produces different output.
 
 ### decrypt
 
@@ -26,11 +36,6 @@ plaintext to `<output>`.
 Accepted input: a file whose entire contents are valid UTF-8 consisting of one armored saltybox unit in any supported
 format (see File formats). The format is selected by the magic prefix; both `saltybox1` and `saltybox2` inputs are
 accepted.
-
-Output is written atomically via a same-directory private temporary file: on success `<output>` contains exactly the
-plaintext; on any failure an existing file at `<output>` is left unchanged and no partial file ever appears at
-`<output>`. A failed or interrupted write may leave the temporary file (owner-only permissions, name prefixed
-`.saltybox-`) behind in the output directory; rename failures report its path. On Unix the output file mode is 0600.
 
 Failures are diagnosed per scenario, each with a distinct message:
 
@@ -47,11 +52,33 @@ Failures are diagnosed per scenario, each with a distinct message:
   authentication-failure diagnostic. There is no way to tell programmatically (or otherwise) which of the two occurred;
   they are cryptographically indistinguishable.
 
-### update (validation read)
+### update
 
-`update` decrypts the existing encrypted file before re-encrypting new content, to validate that the passphrase matches
-(preventing accidental passphrase changes). That validation read accepts the same formats as `decrypt`, with the same
-failure taxonomy, and any such failure aborts the update leaving the existing encrypted file unchanged.
+`saltybox update -i <input> -o <existing>` replaces the contents of the existing encrypted file `<existing>` with newly
+encrypted plaintext from `<input>`, validating first that the passphrase matches the existing file (preventing
+accidental passphrase changes). `<input>` and `<existing>` must be different files; identical paths and aliases of the
+same file (via symlinks, path traversal, or hard links) are rejected.
+
+The validation read decrypts `<existing>` and accepts the same formats as `decrypt`, with the same failure taxonomy. Any
+failure — including a wrong passphrase — aborts the update and leaves `<existing>` unchanged.
+
+On successful validation, the new plaintext is encrypted with the validated passphrase and written atomically over
+`<existing>`. The output format is a function of the write-format override alone (below), never of the existing file's
+format: with the override unset, updating a saltybox2 file rewrites it as saltybox1 — a format downgrade.
+
+### Experimental write-format override
+
+NOTE: `SALTYBOX_EXPERIMENTAL_V2` is experimental and scheduled for removal when saltybox2 becomes the default write
+format. Do not build automation on it.
+
+The environment variable `SALTYBOX_EXPERIMENTAL_V2` selects the format that `encrypt` and `update` write:
+
+- Unset: saltybox1 is written.
+- Set to exactly `1`: saltybox2 is written, with Argon2 parameters m=262144 KiB, t=3, p=1.
+- Set to any other value (including values that are not valid Unicode): write commands fail with an error naming the
+  variable, rather than guessing.
+
+`decrypt` ignores the variable entirely, including invalid values.
 
 ## File formats
 
