@@ -13,6 +13,7 @@
 //! because a new format was added.
 
 use crate::error::{ErrorCategory, ErrorKind, Result, SaltyboxError};
+use crate::format_v2::V2Engine;
 use crate::{secretcrypt_v1, varmor};
 use zeroize::Zeroizing;
 
@@ -76,7 +77,9 @@ impl FormatEngine for V1Engine {
 }
 
 /// Every supported engine, in the order the read side tries their magics.
-const ENGINES: &[&dyn FormatEngine] = &[&V1Engine];
+///
+/// Engines are never removed: every format ever written stays decryptable.
+const ENGINES: &[&dyn FormatEngine] = &[&V1Engine, &V2Engine];
 
 /// The engine used for all newly written files.
 ///
@@ -209,8 +212,30 @@ mod tests {
     // refactor.
 
     #[test]
+    fn test_engine_for_selects_v2() {
+        let armored = V2Engine.encrypt(b"pw", b"payload").unwrap();
+        let engine = engine_for(&armored).unwrap();
+        assert_eq!(engine.magic(), "saltybox2:");
+    }
+
+    #[test]
+    fn test_v2_roundtrip_through_dispatch() {
+        let plaintext = b"v2 dispatch roundtrip";
+        let armored = V2Engine.encrypt(b"pw", plaintext).unwrap();
+
+        let Ok((engine, payload)) = decode(&armored) else {
+            panic!("expected decode to succeed")
+        };
+        let decrypted = engine.decrypt(b"pw", &payload).unwrap();
+        assert_eq!(plaintext, &decrypted[..]);
+    }
+
+    #[test]
     fn test_prefix_of_magic_is_truncated() {
-        for input in ["", "salt", "saltybox", "saltybox1"] {
+        // "saltybox2" is a proper prefix of the (supported) saltybox2 magic,
+        // so it diagnoses as truncation — before v2 support it was diagnosed
+        // as an unsupported future version.
+        for input in ["", "salt", "saltybox", "saltybox1", "saltybox2"] {
             let Err(err) = engine_for(input) else {
                 panic!("expected error for {input:?}")
             };
@@ -229,7 +254,7 @@ mod tests {
 
     #[test]
     fn test_unsupported_version_is_from_future() {
-        for input in ["saltybox2", "saltybox999999:..."] {
+        for input in ["saltybox3", "saltybox3:...", "saltybox999999:..."] {
             let Err(err) = engine_for(input) else {
                 panic!("expected error for {input:?}")
             };
