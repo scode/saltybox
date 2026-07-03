@@ -197,6 +197,14 @@ fn test_update_accepts_v2_encrypted_file() {
         "update over v2 file failed: {}",
         String::from_utf8_lossy(&result.stderr)
     );
+    // Per SPEC.md, update always writes the current write format (saltybox1),
+    // regardless of the existing file's format: updating a saltybox2 file
+    // downgrades it.
+    assert!(
+        fs::read_to_string(&encrypted)
+            .unwrap()
+            .starts_with("saltybox1:")
+    );
 
     let result = run_saltybox_with_passphrase(
         &[

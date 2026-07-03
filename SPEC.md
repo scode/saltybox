@@ -15,8 +15,20 @@ All commands take a passphrase: interactively from the terminal with echo disabl
 newlines are NOT stripped, and the passphrase need not be valid UTF-8). On any failure, commands exit with a nonzero
 status and report the error on standard error.
 
-Not yet specified: `encrypt`, and `update`'s write behavior (which format it writes and how). `update`'s validation read
-IS specified below.
+Commands write their output file atomically via a same-directory private temporary file: on success the output contains
+exactly the intended bytes, and no partial file ever appears at the output path under any circumstances. On any failure
+before the atomic rename, an existing file at the output path is left unchanged. (One narrow exception to "unchanged on
+failure": if making the rename durable fails after the rename itself succeeded, the output has already been replaced —
+with complete contents — while the command still exits nonzero.) A failed or interrupted write may leave the temporary
+file (on Unix with owner-only permissions; name prefixed `.saltybox-`) behind in the output directory; rename failures
+report its path. On Unix the final output file mode is 0600.
+
+### encrypt
+
+`saltybox encrypt -i <input> -o <output>` reads plaintext from `<input>` — any byte sequence, including empty — and
+writes one armored saltybox unit to `<output>` in the saltybox1 format. The output format never depends on any existing
+file. Salt and nonce are freshly generated at random for every encryption, so encrypting the same input twice produces
+different output.
 
 ### decrypt
 
@@ -26,14 +38,6 @@ plaintext to `<output>`.
 Accepted input: a file whose entire contents are valid UTF-8 consisting of one armored saltybox unit in any supported
 format (see File formats). The format is selected by the magic prefix; both `saltybox1` and `saltybox2` inputs are
 accepted.
-
-Output is written atomically via a same-directory private temporary file: on success `<output>` contains exactly the
-plaintext, and no partial file ever appears at `<output>` under any circumstances. On any failure before the atomic
-rename, an existing file at `<output>` is left unchanged. (One narrow exception to "unchanged on failure": if making the
-rename durable fails after the rename itself succeeded, `<output>` has already been replaced — with complete contents —
-while the command still exits nonzero.) A failed or interrupted write may leave the temporary file (on Unix with
-owner-only permissions; name prefixed `.saltybox-`) behind in the output directory; rename failures report its path. On
-Unix the output file mode is 0600.
 
 Failures are diagnosed per scenario, each with a distinct message:
 
@@ -52,12 +56,20 @@ Failures are diagnosed per scenario, each with a distinct message:
   authentication-failure diagnostic. There is no way to tell programmatically (or otherwise) which of the two occurred;
   they are cryptographically indistinguishable.
 
-### update (validation read)
+### update
 
-`update` decrypts the existing encrypted file before re-encrypting new content, to validate that the passphrase matches
-(preventing accidental passphrase changes). That validation read accepts the same formats as `decrypt` and fails in the
-same scenarios with the same classifications — messages may differ in how they name the input file — and any such
-failure aborts the update leaving the existing encrypted file unchanged.
+`saltybox update -i <input> -o <existing>` replaces the contents of the existing encrypted file `<existing>` with newly
+encrypted plaintext from `<input>`, validating first that the passphrase matches the existing file (preventing
+accidental passphrase changes). `<input>` and `<existing>` must be different files; identical paths and aliases of the
+same file via symlinks or path traversal are rejected, and on Unix, hard-link aliases are rejected as well.
+
+The validation read decrypts `<existing>`, accepting the same formats as `decrypt` and failing in the same scenarios
+with the same classifications (messages may differ in how they name the input file). Any failure — including a wrong
+passphrase — aborts the update and leaves `<existing>` unchanged.
+
+On successful validation, the new plaintext is encrypted with the validated passphrase and written atomically over
+`<existing>`, always in the current write format (saltybox1), regardless of the existing file's format: updating a
+saltybox2 file rewrites it as saltybox1 — a format downgrade.
 
 ## File formats
 
