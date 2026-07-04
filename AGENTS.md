@@ -7,6 +7,20 @@ changing behavior, in which case update `SPEC.md` to match as part of the change
 existing-but-unspecified; when a change touches such behavior, specify it (including its pre-existing behavior) in the
 same change.
 
+# Checks
+
+Run the checks CI enforces locally before creating or updating a PR, and again after fixing review findings:
+
+- `cargo fmt -- --check`
+- `cargo clippy --all-targets --all-features -- -D warnings`
+- `cargo test --all-features --all-targets`
+- `cargo doc --no-deps --all-features`
+- `dprint check`
+
+Plain `cargo doc` suffices for the documentation check: rustdoc's lints (such as public documentation intra-doc-linking
+a private item) are denied via the `[lints.rustdoc]` table in `Cargo.toml`, so they fail the build rather than scrolling
+past as warnings.
+
 # PR titles
 
 PR titles must follow [Conventional Commits](https://www.conventionalcommits.org/) style. This is enforced by CI and
