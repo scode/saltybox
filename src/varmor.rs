@@ -10,10 +10,10 @@ use crate::error::{ErrorCategory, ErrorKind, Result, SaltyboxError};
 use base64::{Engine, engine::general_purpose::URL_SAFE_NO_PAD};
 
 /// Magic prefix for all saltybox versions
-const MAGIC_PREFIX: &str = "saltybox";
+pub const MAGIC_PREFIX: &str = "saltybox";
 
 /// Version 1 magic marker
-const V1_MAGIC: &str = "saltybox1:";
+pub const V1_MAGIC: &str = "saltybox1:";
 
 /// Wrap bytes in armor, returning the armored string
 ///
