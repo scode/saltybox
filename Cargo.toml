@@ -39,6 +39,12 @@ zeroize = "1.8"
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
 
+# Deny rustdoc's lints (e.g. public docs intra-doc-linking a private item) so
+# plain `cargo doc` fails on them everywhere — locally and in CI — without
+# anyone having to remember an extra flag or environment variable.
+[lints.rustdoc]
+all = "deny"
+
 # Compile the key-derivation crates with optimizations even in dev/test
 # builds. They are intentionally slow, and for all practical purposes we
 # assume they are not buggy and not under testing.

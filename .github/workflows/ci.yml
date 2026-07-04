@@ -53,6 +53,8 @@ jobs:
         with:
           toolchain: nightly
           cache: true
+      # rustdoc lint failures are enforced via [lints.rustdoc] in Cargo.toml,
+      # so this fails on e.g. broken intra-doc links without extra flags.
       - run: cargo doc --no-deps --all-features
         env:
           RUSTDOCFLAGS: --cfg docsrs
