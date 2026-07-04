@@ -9,6 +9,7 @@ use std::path::PathBuf;
 use std::process;
 
 use saltybox::file_ops;
+use saltybox::format;
 use saltybox::passphrase::{PassphraseReader, ReaderPassphraseReader, TerminalPassphraseReader};
 
 #[derive(Parser)]
@@ -68,14 +69,17 @@ fn main() {
     let cli = Cli::parse();
 
     let mut reader = get_passphrase_reader(cli.passphrase_stdin);
+    let write_engine = format::default_write_engine();
     let result = match cli.command {
         Commands::Encrypt { input, output } => {
-            file_ops::encrypt_file(&input, &output, &mut *reader)
+            file_ops::encrypt_file(&input, &output, &mut *reader, write_engine)
         }
         Commands::Decrypt { input, output } => {
             file_ops::decrypt_file(&input, &output, &mut *reader)
         }
-        Commands::Update { input, output } => file_ops::update_file(&input, &output, &mut *reader),
+        Commands::Update { input, output } => {
+            file_ops::update_file(&input, &output, &mut *reader, write_engine)
+        }
     };
 
     if let Err(e) = result {
