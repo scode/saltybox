@@ -69,8 +69,7 @@ const V2_FIXTURE: &str = "saltybox2:AAECAwQFBgcICQoLDA0ODwAAIAAAAAADAAAAAQABAgME
 const V2_FIXTURE_PASSPHRASE: &str = "test";
 const V2_FIXTURE_PLAINTEXT: &str = "test payload";
 
-/// Decrypting a saltybox2 file must work unconditionally — no flag or
-/// environment variable involved.
+/// Decrypting a saltybox2 file must work unconditionally.
 #[test]
 fn test_decrypt_known_v2_ciphertext() {
     let temp_dir = TempDir::new().unwrap();
@@ -197,13 +196,10 @@ fn test_update_accepts_v2_encrypted_file() {
         "update over v2 file failed: {}",
         String::from_utf8_lossy(&result.stderr)
     );
-    // Per SPEC.md, update always writes the current write format (saltybox1),
-    // regardless of the existing file's format: updating a saltybox2 file
-    // downgrades it.
     assert!(
         fs::read_to_string(&encrypted)
             .unwrap()
-            .starts_with("saltybox1:")
+            .starts_with("saltybox2:")
     );
 
     let result = run_saltybox_with_passphrase(
@@ -224,11 +220,64 @@ fn test_update_accepts_v2_encrypted_file() {
     );
 }
 
-/// The transition plan (lore/2026-07-01-saltybox2.md) lands saltybox2 read
-/// support before any write-side change: encrypt must keep writing saltybox1
-/// until the default is deliberately flipped in a later step.
+/// Updating a saltybox1 file rewrites it as saltybox2 — the migration path
+/// for pre-existing files. The v1 input comes from the committed fixture,
+/// since the CLI cannot produce saltybox1 output.
 #[test]
-fn test_encrypt_still_writes_saltybox1() {
+fn test_update_upgrades_v1_file_to_saltybox2() {
+    let temp_dir = TempDir::new().unwrap();
+    let new_plain = temp_dir.path().join("new.txt");
+    let encrypted = temp_dir.path().join("hello.txt.salty");
+    let decrypted = temp_dir.path().join("decrypted.txt");
+
+    fs::copy(testdata_path("hello.txt.salty"), &encrypted).unwrap();
+    assert!(
+        fs::read_to_string(&encrypted)
+            .unwrap()
+            .starts_with("saltybox1:")
+    );
+    fs::write(&new_plain, "migrated content").unwrap();
+
+    let result = run_saltybox_with_passphrase(
+        &[
+            "update",
+            "-i",
+            new_plain.to_str().unwrap(),
+            "-o",
+            encrypted.to_str().unwrap(),
+        ],
+        "test",
+    )
+    .unwrap();
+    assert!(
+        result.status.success(),
+        "update over v1 file failed: {}",
+        String::from_utf8_lossy(&result.stderr)
+    );
+    assert!(
+        fs::read_to_string(&encrypted)
+            .unwrap()
+            .starts_with("saltybox2:")
+    );
+
+    let result = run_saltybox_with_passphrase(
+        &[
+            "decrypt",
+            "-i",
+            encrypted.to_str().unwrap(),
+            "-o",
+            decrypted.to_str().unwrap(),
+        ],
+        "test",
+    )
+    .unwrap();
+    assert!(result.status.success());
+    assert_eq!(fs::read_to_string(&decrypted).unwrap(), "migrated content");
+}
+
+/// encrypt writes the saltybox2 format.
+#[test]
+fn test_encrypt_writes_saltybox2() {
     let temp_dir = TempDir::new().unwrap();
     let plaintext = temp_dir.path().join("plain.txt");
     let encrypted = temp_dir.path().join("out.salty");
@@ -247,11 +296,9 @@ fn test_encrypt_still_writes_saltybox1() {
     )
     .unwrap();
     assert!(result.status.success());
-    assert!(
-        fs::read_to_string(&encrypted)
-            .unwrap()
-            .starts_with("saltybox1:")
-    );
+    let armored = fs::read_to_string(&encrypted).unwrap();
+    assert!(armored.starts_with("saltybox2:"));
+    assert!(armored.ends_with(":end"));
 }
 
 /// Bare "saltybox2" is a proper prefix of a supported magic and is

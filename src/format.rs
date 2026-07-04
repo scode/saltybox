@@ -95,14 +95,17 @@ impl FormatEngine for V1Engine {
 /// Engines are never removed: every format ever written stays decryptable.
 const ENGINES: &[&dyn FormatEngine] = &[&V1Engine, &V2Engine];
 
-/// The engine used for all newly written files.
+/// The engine used for all newly written files: saltybox2.
 ///
 /// The write side has no input magic to dispatch on, so this selection is the
 /// single point that decides what format saltybox produces. Decryption
 /// support is intentionally broader: every engine in `ENGINES` stays
-/// readable forever regardless of what this returns.
+/// readable forever regardless of what this returns. saltybox1 is
+/// decrypt-only — there is deliberately no way to write it from the CLI
+/// (tests exercise the v1 write direction through `secretcrypt_v1`
+/// directly).
 pub fn default_write_engine() -> &'static dyn FormatEngine {
-    &V1Engine
+    &V2Engine
 }
 
 /// Select the engine for an armored input and decode its payload in one step.
@@ -174,17 +177,24 @@ mod tests {
     mod dispatch {
         use super::*;
 
+        /// Produce v1 armored data for read-side tests. The CLI cannot write
+        /// v1, so tests are the only callers of the v1 engine's encrypt —
+        /// routing through it here keeps that impl exercised rather than dead.
+        fn v1_armored(passphrase: &[u8], plaintext: &[u8]) -> String {
+            V1Engine.encrypt(passphrase, plaintext).unwrap()
+        }
+
         #[test]
         fn engine_for_selects_v1() {
-            let armored = default_write_engine().encrypt(b"pw", b"payload").unwrap();
+            let armored = v1_armored(b"pw", b"payload");
             let engine = engine_for(&armored).unwrap();
             assert_eq!(engine.magic(), "saltybox1:");
         }
 
         #[test]
-        fn default_write_engine_writes_v1() {
+        fn default_write_engine_writes_v2() {
             let armored = default_write_engine().encrypt(b"pw", b"payload").unwrap();
-            assert!(armored.starts_with("saltybox1:"));
+            assert!(armored.starts_with("saltybox2:"));
         }
 
         #[test]
@@ -195,9 +205,9 @@ mod tests {
         }
 
         #[test]
-        fn roundtrip_through_dispatch() {
+        fn v1_roundtrip_through_dispatch() {
             let plaintext = b"hello world";
-            let armored = default_write_engine().encrypt(b"pw", plaintext).unwrap();
+            let armored = v1_armored(b"pw", plaintext);
 
             let (engine, payload) = decode(&armored).unwrap();
             let decrypted = engine.decrypt(b"pw", &payload).unwrap();

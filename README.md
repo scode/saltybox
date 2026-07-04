@@ -64,8 +64,9 @@ same file) is rejected.
 - File writes use atomic same-directory temporary files named `.saltybox-*.tmp`. On Unix, these temporary files are
   written with mode `0600` and then atomically renamed into place. In the event of a crash, stale `.saltybox-*.tmp`
   files may remain and should still be private (`0600`).
-- The format is based upon well known algorithms with exceedingly simple layering on top. scrypt is used for key
-  stretching, nacl is used for encryption, and a base64 variant is used for encoding.
+- The formats are based upon well known algorithms with exceedingly simple layering on top. New files are written in the
+  saltybox2 format (Argon2id for key stretching, XChaCha20-Poly1305 for encryption); older saltybox1 files (scrypt and
+  NaCl secretbox) remain decryptable forever. A base64 variant is used for encoding in both formats.
 - The amount of code is relatively small and light on dependencies.
 
 # Guidance for use
@@ -93,6 +94,8 @@ external projects/people aside from the Rust language tools themselves remaining
 # Format/API contract
 
 - Future versions if any will remain able to decrypt data encrypted by older versions.
+- The reverse does not hold: newly written files use the saltybox2 format, which saltybox versions before 4.0 cannot
+  read. Running `update` on an old file also rewrites it as saltybox2 (this is the intended way to migrate old files).
 - The command line interface may change at any time. It is currently not intended for automated scripting (for this
   reason and others).
 - The code in this project is not meant to be consumed as a library and may be refactored or changed at will. It's
@@ -110,7 +113,51 @@ program.
 Unfortunately, I have not been able to find a tool like this that satisfies my personal criteria for what I want to
 depend on for emergency life recovery media.
 
+# Details: Encrypted File Format (saltybox format version 2)
+
+This is the format saltybox currently writes. The output is a text file containing an armored (ASCII text) string that
+represents the encrypted data. This section documents the format.
+
+## Armored (Text) Format
+
+- The contents of the file starts with the string `saltybox2:` which identifies the format.
+- This is followed by a base64url encoded (RFC 4648 Section 5, no padding) payload whose format is described below
+  ("binary format").
+  - Uses URL-safe base64 alphabet: `-` and `_` instead of `+` and `/`
+- The payload is terminated by the literal marker `:end`. The marker is a plain-text truncation aid: armored text gets
+  copy-pasted, and a paste that lost its tail is rejected up front with a message naming the missing marker. It is
+  deliberately not covered by any cryptographic check — integrity is solely the job of the authentication tag. Trailing
+  whitespace after the marker is accepted and ignored.
+- Example:
+  `saltybox2:AAECAwQFBgcICQoLDA0ODwAAIAAAAAADAAAAAQABAgMEBQYHCAkKCwwNDg8QERITFBUWFwzD0jEQJtkCSl0SBslcxc9u0TKUcd-9COPdAIg:end`
+
+## Binary Format
+
+The binary format contains the following, in order:
+
+1. **Salt** (16 bytes): Random salt used for key derivation.
+2. **m** (4 bytes): Unsigned 32-bit big-endian integer; Argon2 memory cost in KiB.
+3. **t** (4 bytes): Unsigned 32-bit big-endian integer; Argon2 time cost (passes).
+4. **p** (4 bytes): Unsigned 32-bit big-endian integer; Argon2 parallelism (lanes).
+5. **Nonce** (24 bytes): Random nonce for the XChaCha20-Poly1305 encryption.
+6. **Sealed data** (variable length): XChaCha20-Poly1305 output — the ciphertext followed by a 16-byte Poly1305
+   authentication tag — extending to the end of the payload. There is no length field, and trailing data is therefore
+   impossible by construction. Empty plaintext is valid: the sealed data is then exactly the 16-byte tag. The plaintext
+   is encrypted exactly as provided - no padding and no additional metadata.
+
+The AEAD associated data is the ASCII magic `saltybox2:` concatenated with the entire header (salt, m, t, p, nonce), so
+a successful decrypt proves the whole envelope — version identifier included — was untampered.
+
+The encryption key is derived from the user-provided passphrase and the salt using Argon2id (version 0x13) with the m,
+t, p values from the header, producing a 32-byte key. New files are written with m=262144 KiB (256 MiB), t=3, p=1.
+During decryption, the parameters are validated before any key derivation work (t at most 64, p at most 8, m at most
+4194304 KiB and at least 8×p KiB), so a hostile file cannot cause large memory or CPU consumption via its header;
+out-of-range parameters are rejected as format errors, and any in-range combination decrypts normally.
+
 # Details: Encrypted File Format (saltybox format version 1)
+
+NOTE: This section documents the legacy saltybox1 format, which current versions still decrypt but no longer write. New
+files use the saltybox2 format documented above; both formats are specified normatively in `SPEC.md`.
 
 Saltybox encrypts files using a passphrase-based encryption scheme. The output is a text file containing an armored
 (ASCII text) string that represents the encrypted data. This section documents the format.
@@ -122,8 +169,7 @@ Saltybox encrypts files using a passphrase-based encryption scheme. The output i
   ("binary format").
   - Uses URL-safe base64 alphabet: `-` and `_` instead of `+` and `/`
 - Example: `saltybox1:RF0qX8mpCMXVBq6zxHfamdiT64s6Pwvb99Qj9gV61sMAAAAAAAAAFE6RVTWMhBCMJGL0MmgdDUBHoJaW`
-  - The `1` in the prefix indicates the format version. Future versions would use a different version number (e.g.,
-    `saltybox2:`).
+  - The number in the prefix indicates the format version (see the saltybox2 section above for the current format).
 
 ## Binary Format
 
@@ -164,8 +210,9 @@ cargo test --test golden_vectors -- --ignored
 cargo test --test golden_vectors_v2
 ```
 
-(The arguments are required because by default not all golden vectors are tested in order to avoid adding multiple
-seconds to test time.)
+(The extra arguments on the first command are needed because by default only a subset of the v1 vectors is tested:
+saltybox1's scrypt cost is fixed by the format, so every v1 vector is unavoidably slow. saltybox2 records its Argon2
+cost parameters per file, so the v2 vectors are built deliberately cheap and all run by default.)
 
 ## Golden Vectors Format
 
@@ -178,6 +225,11 @@ fields:
 - **salt**: Base64-encoded salt used for encryption
 - **passphrase**: Base64-encoded passphrase used for encryption
 - **comment**: Human-readable description of what the test case exercises
+
+The `testdata/golden-vectors-v2.json` file follows the same conventions with a saltybox2-shaped schema: **armored** (the
+full expected `saltybox2:...` string) instead of **ciphertext**, plus the Argon2 parameters **m_cost_kib**, **t_cost**,
+and **p_cost**. It is generated by `testdata/generate-golden-vectors-v2.py` using an independent implementation stack;
+see `testdata/README`.
 
 All binary data (including passphrases that may contain arbitrary bytes) is base64-encoded for safe JSON storage. The
 ciphertext is in the final armored text format that would be written to a file.
