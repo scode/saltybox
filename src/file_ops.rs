@@ -581,6 +581,55 @@ mod tests {
         assert_eq!(fs::read(&decrypted_path).unwrap(), b"old plaintext");
     }
 
+    /// Pins the tempfile contract SPEC.md makes normative: the temporary
+    /// file is created in the output directory with the ".saltybox-" prefix
+    /// and owner-only permissions, and a failed rename reports the
+    /// tempfile's path so the user can clean it up. The rename is forced to
+    /// fail by making the output path an existing directory.
+    #[test]
+    #[cfg(unix)]
+    fn test_failed_rename_reports_private_tempfile() {
+        let temp_dir = TempDir::new().unwrap();
+        let plain_path = temp_dir.path().join("plain.txt");
+        let crypt_path = temp_dir.path().join("occupied");
+
+        fs::write(&plain_path, b"secret").unwrap();
+        fs::create_dir(&crypt_path).unwrap();
+
+        let mut reader = ConstantPassphraseReader::new(b"test".to_vec());
+        let err = encrypt_file(&plain_path, &crypt_path, &mut reader)
+            .expect_err("expected rename onto a directory to fail");
+
+        // The rename-failure message travels in the error source chain and
+        // must point at the leftover tempfile.
+        let mut chain_msg = None;
+        let mut source: Option<&(dyn std::error::Error + 'static)> = Some(&err);
+        while let Some(e) = source {
+            let msg = e.to_string();
+            if msg.contains("tempfile may still exist at") {
+                chain_msg = Some(msg);
+                break;
+            }
+            source = e.source();
+        }
+        let msg = chain_msg.expect("expected rename failure to report the tempfile path");
+        let tempfile_path = msg
+            .split("tempfile may still exist at ")
+            .nth(1)
+            .and_then(|rest| rest.split(" and may need manual removal").next())
+            .expect("expected the message to embed the tempfile path");
+
+        let tempfile_path = std::path::Path::new(tempfile_path);
+        assert!(tempfile_path.exists(), "leftover tempfile should exist");
+        let name = tempfile_path.file_name().unwrap().to_str().unwrap();
+        assert!(name.starts_with(".saltybox-"), "name: {name}");
+        assert!(name.ends_with(".tmp"), "name: {name}");
+        assert_eq!(tempfile_path.parent().unwrap(), temp_dir.path());
+
+        let mode = fs::metadata(tempfile_path).unwrap().permissions().mode();
+        assert_eq!(mode & 0o777, 0o600, "tempfile must be owner-only");
+    }
+
     #[test]
     fn test_encrypt_to_missing_output_directory_is_user_error() {
         let temp_dir = TempDir::new().unwrap();

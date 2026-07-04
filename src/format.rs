@@ -13,6 +13,7 @@
 //! because a new format was added.
 
 use crate::error::{ErrorCategory, ErrorKind, Result, SaltyboxError};
+use crate::format_v2::V2Engine;
 use crate::{secretcrypt_v1, varmor};
 use zeroize::Zeroizing;
 
@@ -90,7 +91,9 @@ impl FormatEngine for V1Engine {
 }
 
 /// Every supported engine, in the order the read side tries their magics.
-const ENGINES: &[&dyn FormatEngine] = &[&V1Engine];
+///
+/// Engines are never removed: every format ever written stays decryptable.
+const ENGINES: &[&dyn FormatEngine] = &[&V1Engine, &V2Engine];
 
 /// The engine used for all newly written files.
 ///
@@ -118,14 +121,17 @@ pub fn decode(armored: &str) -> Result<(&'static dyn FormatEngine, Vec<u8>)> {
 /// Select the engine for an armored input by its magic.
 ///
 /// Inputs matching no supported magic are diagnosed per scenario: a proper
-/// prefix of a supported magic reads as likely truncation, a `saltybox`
+/// prefix of any supported magic reads as likely truncation, a `saltybox`
 /// prefix that matches no supported version as coming from a future
 /// saltybox, and anything else as not saltybox data at all.
 ///
 /// The CLI's diagnostics for unrecognized input come from here: raw input
-/// is classified before any engine sees it. [`varmor::unwrap`] carries
-/// equivalent branches with identical message strings for its direct
-/// callers; the duplication is deliberate, keeping varmor self-contained.
+/// is classified before any engine sees it, relative to the full set of
+/// supported versions — bare "saltybox2" reads as likely truncation, for
+/// example, since it is a proper prefix of a supported magic.
+/// [`varmor::unwrap`] carries equivalent v1-only branches with identical
+/// message strings for its direct callers; the duplication is deliberate,
+/// keeping varmor self-contained.
 pub fn engine_for(armored: &str) -> Result<&'static dyn FormatEngine> {
     for engine in ENGINES {
         if armored.starts_with(engine.magic()) {
@@ -182,13 +188,28 @@ mod tests {
         }
 
         #[test]
+        fn engine_for_selects_v2() {
+            let armored = V2Engine.encrypt(b"pw", b"payload").unwrap();
+            let engine = engine_for(&armored).unwrap();
+            assert_eq!(engine.magic(), "saltybox2:");
+        }
+
+        #[test]
         fn roundtrip_through_dispatch() {
             let plaintext = b"hello world";
             let armored = default_write_engine().encrypt(b"pw", plaintext).unwrap();
 
-            let Ok((engine, payload)) = decode(&armored) else {
-                panic!("expected decode to succeed")
-            };
+            let (engine, payload) = decode(&armored).unwrap();
+            let decrypted = engine.decrypt(b"pw", &payload).unwrap();
+            assert_eq!(plaintext, &decrypted[..]);
+        }
+
+        #[test]
+        fn v2_roundtrip_through_dispatch() {
+            let plaintext = b"v2 dispatch roundtrip";
+            let armored = V2Engine.encrypt(b"pw", plaintext).unwrap();
+
+            let (engine, payload) = decode(&armored).unwrap();
             let decrypted = engine.decrypt(b"pw", &payload).unwrap();
             assert_eq!(plaintext, &decrypted[..]);
         }
@@ -199,15 +220,37 @@ mod tests {
             // malformed body still selects that engine, whose unarmor then
             // reports the decode error.
             let input = "saltybox1:bad$$";
-            let Ok(engine) = engine_for(input) else {
-                panic!("expected dispatch to succeed for {input:?}")
-            };
+            let engine = engine_for(input).unwrap();
             assert_eq!(engine.magic(), "saltybox1:");
 
             let err = engine
                 .unarmor(input)
                 .expect_err("expected base64 decode failure");
             assert_eq!(err.kind, Some(ErrorKind::ArmoringDecode));
+        }
+
+        #[test]
+        fn unarmor_rejects_non_canonical_base64() {
+            // SPEC.md requires canonical armor: padding characters ("AA==") and
+            // non-zero trailing bits ("AB") must be rejected. This currently
+            // holds via the base64 crate's URL_SAFE_NO_PAD defaults; pinning it
+            // here keeps a dependency upgrade from silently loosening the format.
+            for input in [
+                "saltybox1:AA==",
+                "saltybox2:AA==:end",
+                "saltybox1:AB",
+                "saltybox2:AB:end",
+            ] {
+                let engine = engine_for(input).unwrap();
+                let err = engine
+                    .unarmor(input)
+                    .expect_err(&format!("expected canonicality rejection for {input:?}"));
+                assert_eq!(
+                    err.kind,
+                    Some(ErrorKind::ArmoringDecode),
+                    "input: {input:?}"
+                );
+            }
         }
 
         #[test]
@@ -233,7 +276,9 @@ mod tests {
 
         #[test]
         fn prefix_of_magic_is_truncated() {
-            for input in ["", "salt", "saltybox", "saltybox1"] {
+            // Bare "saltybox2" is a proper prefix of the saltybox2 magic, so it
+            // reads as likely truncation rather than as an unsupported version.
+            for input in ["", "salt", "saltybox", "saltybox1", "saltybox2"] {
                 let Err(err) = engine_for(input) else {
                     panic!("expected error for {input:?}")
                 };
@@ -252,7 +297,7 @@ mod tests {
 
         #[test]
         fn unsupported_version_is_from_future() {
-            for input in ["saltybox2", "saltybox999999:..."] {
+            for input in ["saltybox3", "saltybox3:...", "saltybox999999:..."] {
                 let Err(err) = engine_for(input) else {
                     panic!("expected error for {input:?}")
                 };
