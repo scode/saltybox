@@ -14,6 +14,29 @@ use zeroize::Zeroizing;
 const TEMPFILE_PREFIX: &str = ".saltybox-";
 const TEMPFILE_SUFFIX: &str = ".tmp";
 
+/// Reads the passphrase and rejects an empty one.
+///
+/// Empty passphrases are refused for all operations. An empty passphrase
+/// provides no meaningful protection, and empty input is almost always an
+/// accident rather than intent — the canonical case is `--passphrase-stdin`
+/// fed by `echo -n "$PASS"` with `PASS` unset, which expands to zero bytes
+/// and would otherwise silently produce an effectively unprotected file.
+///
+/// The check lives here at the operation layer, not in the individual
+/// [`PassphraseReader`] implementations, so it holds regardless of how the
+/// passphrase was obtained.
+fn read_nonempty_passphrase(reader: &mut dyn PassphraseReader) -> Result<Zeroizing<Vec<u8>>> {
+    let passphrase = reader.read_passphrase()?;
+    if passphrase.is_empty() {
+        return Err(SaltyboxError::with_kind(
+            ErrorCategory::User,
+            ErrorKind::EmptyPassphrase,
+            "empty passphrase is not allowed (note that an unset shell variable expands to empty)",
+        ));
+    }
+    Ok(passphrase)
+}
+
 /// Encrypt a file with a passphrase
 ///
 /// Reads plaintext from `input_path`, encrypts it using a passphrase from
@@ -31,7 +54,7 @@ pub fn encrypt_file(
     write_engine: &dyn format::FormatEngine,
 ) -> Result<()> {
     let plaintext = Zeroizing::new(fs::read(input_path).map_err(|e| read_error(input_path, e))?);
-    let passphrase = passphrase_reader.read_passphrase()?;
+    let passphrase = read_nonempty_passphrase(passphrase_reader)?;
     let armored = write_engine
         .encrypt(&passphrase, &plaintext)
         .map_err(|e| e.with_context("encryption failed"))?;
@@ -62,7 +85,7 @@ pub fn decrypt_file(
             e,
         )
     })?;
-    let passphrase = passphrase_reader.read_passphrase()?;
+    let passphrase = read_nonempty_passphrase(passphrase_reader)?;
     let (engine, ciphertext) =
         format::decode(&armored).map_err(|e| e.with_context("failed to unarmor"))?;
     let plaintext = engine
@@ -113,7 +136,7 @@ pub fn update_file(
             e,
         )
     })?;
-    let passphrase = passphrase_reader.read_passphrase()?;
+    let passphrase = read_nonempty_passphrase(passphrase_reader)?;
 
     // Validate passphrase by decrypting existing file (discard plaintext)
     let (engine, ciphertext) =
@@ -832,6 +855,42 @@ mod tests {
         assert_eq!(err.kind, Some(ErrorKind::Io));
         assert_eq!(err.message(), "encrypted file is not valid UTF-8");
         assert_eq!(fs::read(&crypt_path).unwrap(), [0xff]);
+    }
+
+    /// Empty passphrases are rejected by every operation, including decrypt:
+    /// SPEC.md makes files encrypted with an empty passphrase (possible in
+    /// older versions) deliberately undecryptable.
+    #[test]
+    fn test_empty_passphrase_is_rejected_by_all_operations() {
+        let temp_dir = TempDir::new().unwrap();
+        let plain_path = temp_dir.path().join("plain.txt");
+        let crypt_path = temp_dir.path().join("crypt.txt.saltybox");
+        let decrypted_path = temp_dir.path().join("decrypted.txt");
+
+        fs::write(&plain_path, b"secret").unwrap();
+
+        let mut reader = ConstantPassphraseReader::new(b"".to_vec());
+        let err = encrypt_with_default_engine(&plain_path, &crypt_path, &mut reader)
+            .expect_err("expected empty passphrase rejection on encrypt");
+        assert_eq!(err.category, ErrorCategory::User);
+        assert_eq!(err.kind, Some(ErrorKind::EmptyPassphrase));
+        assert!(!crypt_path.exists());
+
+        // Set up a real encrypted file so decrypt/update fail on the
+        // passphrase check, not on a missing input.
+        let mut reader = ConstantPassphraseReader::new(b"real passphrase".to_vec());
+        encrypt_with_default_engine(&plain_path, &crypt_path, &mut reader).unwrap();
+
+        let mut reader = ConstantPassphraseReader::new(b"".to_vec());
+        let err = decrypt_file(&crypt_path, &decrypted_path, &mut reader)
+            .expect_err("expected empty passphrase rejection on decrypt");
+        assert_eq!(err.kind, Some(ErrorKind::EmptyPassphrase));
+        assert!(!decrypted_path.exists());
+
+        let mut reader = ConstantPassphraseReader::new(b"".to_vec());
+        let err = update_with_default_engine(&plain_path, &crypt_path, &mut reader)
+            .expect_err("expected empty passphrase rejection on update");
+        assert_eq!(err.kind, Some(ErrorKind::EmptyPassphrase));
     }
 
     #[test]

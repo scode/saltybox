@@ -143,6 +143,10 @@ mod tests {
         assert_eq!(&*reader.read_passphrase().unwrap(), b"mypassword");
     }
 
+    /// Readers pass an empty passphrase through unmodified: rejecting empty
+    /// passphrases is the operation layer's job (see `file_ops`), so it holds
+    /// for every reader implementation rather than being re-enforced (or
+    /// forgotten) per source.
     #[test]
     fn test_reader_passphrase_reader_empty() {
         let data = b"";

@@ -66,7 +66,8 @@ same file) is rejected.
   files may remain and should still be private (`0600`).
 - The formats are based upon well known algorithms with exceedingly simple layering on top. New files are written in the
   saltybox2 format (Argon2id for key stretching, XChaCha20-Poly1305 for encryption); older saltybox1 files (scrypt and
-  NaCl secretbox) remain decryptable forever. A base64 variant is used for encoding in both formats.
+  NaCl secretbox) remain decryptable (see the Format/API contract below). A base64 variant is used for encoding in both
+  formats.
 - The amount of code is relatively small and light on dependencies.
 
 # Guidance for use
@@ -93,7 +94,8 @@ external projects/people aside from the Rust language tools themselves remaining
 
 # Format/API contract
 
-- Future versions if any will remain able to decrypt data encrypted by older versions.
+- Future versions if any will remain able to decrypt data encrypted by older versions, with one exception: empty
+  passphrases are rejected, so files encrypted with an empty passphrase by older versions can no longer be decrypted.
 - The reverse does not hold: newly written files use the saltybox2 format, which saltybox versions before 4.0 cannot
   read. Running `update` on an old file also rewrites it as saltybox2 (this is the intended way to migrate old files).
 - The command line interface may change at any time. It is currently not intended for automated scripting (for this
