@@ -605,6 +605,38 @@ fn test_passphrase_stdin_preserves_trailing_newline() {
     );
 }
 
+/// An empty passphrase is rejected (SPEC.md). The common way to arrive here
+/// is `echo -n "$PASS"` on --passphrase-stdin with PASS unset, which would
+/// otherwise silently produce a file protected by nothing.
+#[test]
+fn test_rejects_empty_passphrase() {
+    let temp_dir = TempDir::new().unwrap();
+    let plaintext = temp_dir.path().join("plaintext.txt");
+    let encrypted = temp_dir.path().join("encrypted.txt.salty");
+
+    fs::write(&plaintext, "secret").unwrap();
+
+    let result = run_saltybox_with_passphrase(
+        &[
+            "encrypt",
+            "-i",
+            plaintext.to_str().unwrap(),
+            "-o",
+            encrypted.to_str().unwrap(),
+        ],
+        "",
+    )
+    .unwrap();
+
+    assert!(!result.status.success());
+    let stderr = String::from_utf8_lossy(&result.stderr);
+    assert!(
+        stderr.contains("empty passphrase is not allowed"),
+        "unexpected stderr: {stderr}"
+    );
+    assert!(!encrypted.exists());
+}
+
 #[test]
 fn test_update_operation() {
     let temp_dir = TempDir::new().unwrap();

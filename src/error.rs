@@ -39,6 +39,10 @@ pub enum ErrorKind {
     AuthenticationFailed,
     /// Passphrase could not be obtained from the configured reader.
     PassphraseUnavailable,
+    /// The passphrase read was empty. Empty passphrases are rejected for all
+    /// operations: they provide no meaningful protection, and empty input is
+    /// almost always an accident (an unset shell variable expands to empty).
+    EmptyPassphrase,
     /// Low-level scrypt key derivation failed.
     ScryptFailure,
     /// Low-level Argon2 key derivation failed.
