@@ -10,9 +10,7 @@ argon2-cffi, XChaCha20-Poly1305 via libsodium through PyNaCl) rather than the
 Rust implementation under test. Agreement between the two is evidence the
 Rust code implements the specified format, not merely that it agrees with
 itself. If the two ever disagree, trust neither blindly: re-derive from the
-saltybox2 format specification (SPEC.md; while the transition that adds it
-there is in flight, the module docs of src/format_v2.rs describe the same
-layout).
+saltybox2 format specification in SPEC.md.
 
 Run from the repo root:
 
