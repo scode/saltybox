@@ -24,7 +24,9 @@ before the atomic rename, an existing file at the output path is left unchanged.
 failure": if making the rename durable fails after the rename itself succeeded, the output has already been replaced —
 with complete contents — while the command still exits nonzero.) A failed or interrupted write may leave the temporary
 file (on Unix with owner-only permissions; name prefixed `.saltybox-`) behind in the output directory; rename failures
-report its path. On Unix the final output file mode is 0600.
+report its path. Failures before the temporary file is created (such as an unusable output directory) leave nothing
+behind and are reported without implying a write took place; a nonexistent output directory is reported as such. On Unix
+the final output file mode is 0600.
 
 ### encrypt
 
