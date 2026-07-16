@@ -152,9 +152,10 @@ a successful decrypt proves the whole envelope — version identifier included �
 
 The encryption key is derived from the user-provided passphrase and the salt using Argon2id (version 0x13) with the m,
 t, p values from the header, producing a 32-byte key. New files are written with m=262144 KiB (256 MiB), t=3, p=1.
-During decryption, the parameters are validated before any key derivation work (t at most 64, p at most 8, m at most
-4194304 KiB and at least 8×p KiB), so a hostile file cannot cause large memory or CPU consumption via its header;
-out-of-range parameters are rejected as format errors, and any in-range combination decrypts normally.
+During decryption, the parameters are validated before any key derivation work (t at least 1 and at most 64, p at least
+1 and at most 8, m at most 4194304 KiB and at least 8×p KiB), so a hostile file cannot cause large memory or CPU
+consumption via its header; out-of-range parameters are rejected as format errors, and any in-range combination decrypts
+normally.
 
 # Details: Encrypted File Format (saltybox format version 1)
 
