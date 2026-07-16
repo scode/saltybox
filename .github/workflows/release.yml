@@ -87,9 +87,13 @@ jobs:
           name: artifacts-plan-dist-manifest
           path: plan-dist-manifest.json
 
+  # Local hardening (see CONTRIBUTING.md): dist generates this call with
+  # "secrets: inherit", but the reusable workflow references no secrets and
+  # GITHUB_TOKEN flows to same-repo reusable workflows implicitly. Not
+  # inheriting keeps HOMEBREW_TAP_TOKEN and friends out of reach of future
+  # edits to that workflow.
   custom-release-plan-tests:
     uses: ./.github/workflows/release-plan-tests.yml
-    secrets: inherit
 
   # Build and packages all the platform-specific things
   build-local-artifacts:
