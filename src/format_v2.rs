@@ -560,12 +560,14 @@ mod tests {
     #[test]
     fn test_tampered_ciphertext() {
         // First sealed byte is ciphertext proper; the last byte is inside the
-        // Poly1305 tag. Both corruptions must fail authentication.
-        let payload_len = small_payload(b"pw", b"secret").len();
-        for offset in [HEADER_LEN, payload_len - 1] {
-            let mut payload = small_payload(b"pw", b"secret");
-            payload[offset] ^= 0x01;
-            let err = decrypt(b"pw", &payload).expect_err("expected authentication failure");
+        // Poly1305 tag. Both corruptions must fail authentication. Encrypt
+        // once and clone per case: each encryption runs the Argon2 KDF, and
+        // the cases tamper with the payload, so sharing one is fine.
+        let payload = small_payload(b"pw", b"secret");
+        for offset in [HEADER_LEN, payload.len() - 1] {
+            let mut tampered = payload.clone();
+            tampered[offset] ^= 0x01;
+            let err = decrypt(b"pw", &tampered).expect_err("expected authentication failure");
             assert_eq!(
                 err.kind,
                 Some(ErrorKind::AuthenticationFailed),
@@ -586,13 +588,14 @@ mod tests {
             (SALT_LEN + PARAMS_LEN, None),
             (T_OFFSET + 3, Some(2u8)),
         ];
+        let payload = small_payload(b"pw", b"secret");
         for (offset, replacement) in cases {
-            let mut payload = small_payload(b"pw", b"secret");
+            let mut tampered = payload.clone();
             match replacement {
-                Some(value) => payload[offset] = value,
-                None => payload[offset] ^= 0x01,
+                Some(value) => tampered[offset] = value,
+                None => tampered[offset] ^= 0x01,
             }
-            let err = decrypt(b"pw", &payload)
+            let err = decrypt(b"pw", &tampered)
                 .expect_err(&format!("expected auth failure for offset {offset}"));
             assert_eq!(
                 err.kind,
@@ -606,14 +609,16 @@ mod tests {
     /// validation (a format error), before any key derivation runs.
     #[test]
     fn test_tampered_header_out_of_range_is_format_error() {
-        // Flipping the top byte of m (8192 -> 16785408 KiB) exceeds the cap.
         let mut payload = small_payload(b"pw", b"secret");
-        payload[M_OFFSET] = 0x01;
-        let err = decrypt(b"pw", &payload).expect_err("expected format error for huge m");
+
+        // Flipping the top byte of m (8192 -> 16785408 KiB) exceeds the cap.
+        let mut tampered = payload.clone();
+        tampered[M_OFFSET] = 0x01;
+        let err = decrypt(b"pw", &tampered).expect_err("expected format error for huge m");
         assert_eq!(err.kind, Some(ErrorKind::BinaryFormat));
 
-        // Zeroing p violates the p >= 1 floor.
-        let mut payload = small_payload(b"pw", b"secret");
+        // Zeroing p violates the p >= 1 floor. Last case, so the pristine
+        // payload can be tampered in place.
         payload[P_OFFSET + 3] = 0;
         let err = decrypt(b"pw", &payload).expect_err("expected format error for p = 0");
         assert_eq!(err.kind, Some(ErrorKind::BinaryFormat));
