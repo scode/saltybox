@@ -7,8 +7,6 @@ on:
   push:
     branches:
       - main
-      - master
-      - develop
 
 # CI only needs to read the repo. Without this, third-party actions run with
 # whatever the repository default GITHUB_TOKEN grants.
