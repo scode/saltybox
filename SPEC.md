@@ -12,7 +12,8 @@ in the same change. `AGENTS.md` states the compliance rule.
 
 All commands take a passphrase: interactively from the terminal with echo disabled, or — when the global
 `--passphrase-stdin` option is given — from standard input, read to end-of-input and used exactly as provided (trailing
-newlines are NOT stripped, and the passphrase need not be valid UTF-8). An empty passphrase is an error for every
+newlines are NOT stripped, and the passphrase need not be valid UTF-8). Without `--passphrase-stdin`, commands fail when
+standard input is not a terminal rather than attempting to read a passphrase. An empty passphrase is an error for every
 command, regardless of how the passphrase was provided: it offers no meaningful protection, and empty input almost
 always means a mistake (an unset shell variable expands to empty) rather than intent. NOTE: this makes files encrypted
 with an empty passphrase by older versions undecryptable by these commands. On any failure, commands exit with a nonzero
