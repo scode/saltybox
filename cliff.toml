@@ -49,6 +49,15 @@ footer = """
 """
 # Remove leading and trailing whitespaces from the changelog's body.
 trim = true
+# Re-inject the hand-written 3.2.1 release section and its footer link. That
+# release contains only changelog-skipped commit types, so a full regeneration
+# renders nothing for it and would silently drop the entry. Postprocessors run
+# on the fully rendered output (header, body, and footer alike), which lets us
+# splice the section back in against stable historical anchors.
+postprocessors = [
+  { pattern = '## \[3\.2\.0\] - 2026-03-05', replace = "## [3.2.1] - 2026-04-26\n\n### Changed\n\n- Maintenance release with dependency updates and internal cleanup.\n\n## [3.2.0] - 2026-03-05" },
+  { pattern = '\[3\.2\.0\]: https', replace = "[3.2.1]: https://github.com/scode/saltybox/compare/v3.2.0..v3.2.1\n[3.2.0]: https" },
+]
 
 [git]
 # Parse commits according to the conventional commits specification.
