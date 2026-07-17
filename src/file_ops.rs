@@ -190,9 +190,10 @@ fn paths_are_same_inode(_plain_path: &Path, _crypt_path: &Path) -> bool {
 
 /// Replaces a file through a private same-directory temporary file.
 ///
-/// On Unix, successful writes sync both the tempfile contents and the containing
-/// directory so the replacement survives crashes that happen after rename
-/// returns. The resulting file mode is `0600`.
+/// Successful writes sync the tempfile contents on every platform; on Unix
+/// they additionally sync the containing directory so the replacement
+/// survives crashes that happen after rename returns. On Unix the resulting
+/// file mode is `0600`.
 fn write_file_secure(path: &Path, contents: &[u8]) -> Result<()> {
     let output_dir = path.parent().ok_or_else(|| {
         SaltyboxError::with_kind(
