@@ -513,7 +513,7 @@ dependencies = [
 
 [[package]]
 name = "saltybox"
-version = "4.0.0"
+version = "5.0.0"
 dependencies = [
  "argon2",
  "base64",
