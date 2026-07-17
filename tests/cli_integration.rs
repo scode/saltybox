@@ -605,6 +605,64 @@ fn test_passphrase_stdin_preserves_trailing_newline() {
     );
 }
 
+/// Pins SPEC.md's promise that without --passphrase-stdin, commands fail
+/// when standard input is not a terminal instead of attempting to read a
+/// passphrase. That interactive-prompt path is the default for every human
+/// user, yet nothing else covers it: every other test in this file passes
+/// --passphrase-stdin. An unnoticed regression could hang waiting for input,
+/// or crash inside the prompt, instead of failing cleanly.
+///
+/// Why a child process: the guard under test is `io::stdin().is_terminal()`
+/// in TerminalPassphraseReader, so the verdict depends on the process's own
+/// stdin. The test runner's stdin may or may not be a tty depending on how
+/// `cargo test` was invoked, but a child spawned with `Stdio::null()` stdin
+/// is deterministically not on a terminal — the guard must fire every time,
+/// in every environment.
+///
+/// Failure-mode caveat, should the guard ever regress: the guard probes
+/// stdin, but the fallthrough (rpassword) prompts via /dev/tty, and null
+/// stdin does not detach the controlling terminal. In CI there is no
+/// controlling terminal, so /dev/tty fails to open and this test fails
+/// fast. In an interactive `cargo test` run, the child would open the real
+/// terminal and block on the prompt — the regression still cannot pass the
+/// test, but it would surface as a hang rather than an assertion failure.
+///
+/// Mechanics: the shared helpers hardcode --passphrase-stdin, so the
+/// command is built directly. The input file must actually exist, because
+/// encrypt reads its input before asking for the passphrase — with a
+/// missing file the command would fail at the input-read step and the test
+/// would fail without ever exercising the guard.
+#[test]
+fn test_prompt_without_terminal_fails_cleanly() {
+    let temp_dir = TempDir::new().unwrap();
+    let plaintext = temp_dir.path().join("plaintext.txt");
+    let encrypted = temp_dir.path().join("encrypted.txt.salty");
+
+    fs::write(&plaintext, "secret").unwrap();
+
+    let result = Command::new(saltybox_bin())
+        .args([
+            "encrypt",
+            "-i",
+            plaintext.to_str().unwrap(),
+            "-o",
+            encrypted.to_str().unwrap(),
+        ])
+        .stdin(Stdio::null())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .output()
+        .unwrap();
+
+    assert!(!result.status.success());
+    let stderr = String::from_utf8_lossy(&result.stderr);
+    assert!(
+        stderr.contains("stdin is not a terminal"),
+        "stderr: {stderr}"
+    );
+    assert!(!encrypted.exists());
+}
+
 /// An empty passphrase is rejected (SPEC.md). The common way to arrive here
 /// is `echo -n "$PASS"` on --passphrase-stdin with PASS unset, which would
 /// otherwise silently produce a file protected by nothing.
