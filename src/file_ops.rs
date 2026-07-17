@@ -209,14 +209,15 @@ fn write_file_secure(path: &Path, contents: &[u8]) -> Result<()> {
     };
     #[cfg(unix)]
     let output_dir_file = fs::File::open(output_dir).map_err(|e| {
-        // A missing directory is a user mistake (typoed output path) and gets
-        // a message saying so; the sync-framed message would mislead by
-        // implying the file had already been written.
+        // This open happens before anything is written, so neither message may
+        // imply a write occurred. A missing directory is additionally a user
+        // mistake (typoed output path) and gets a message saying so.
         let msg = if e.kind() == io::ErrorKind::NotFound {
             format!("output directory {} does not exist", output_dir.display())
         } else {
             format!(
-                "failed to open output directory for syncing after writing {}",
+                "failed to open output directory {} while preparing to write {}",
+                output_dir.display(),
                 path.display()
             )
         };
@@ -696,6 +697,67 @@ mod tests {
 
         result.expect_err("expected decrypt output write to fail");
         assert_eq!(fs::read(&decrypted_path).unwrap(), b"old plaintext");
+    }
+
+    /// Pins the pre-write framing SPEC.md makes normative for failures
+    /// before the tempfile exists: an output directory that cannot be opened
+    /// (mode 0o000 here, so EACCES rather than the specially-handled
+    /// NotFound) must be reported as a failure while preparing to write. The
+    /// pre-fix message claimed the file had already been written, sending
+    /// users hunting for output that never existed. (SPEC's "leave nothing
+    /// behind" clause is not asserted here: with the directory unwritable,
+    /// no implementation could leave anything behind, so such an assertion
+    /// would be vacuous.)
+    #[test]
+    #[cfg(unix)]
+    fn test_unopenable_output_directory_reports_pre_write_failure() {
+        let temp_dir = TempDir::new().unwrap();
+        let output_dir = temp_dir.path().join("output");
+        let plain_path = temp_dir.path().join("plain.txt");
+        let crypt_path = output_dir.join("crypt.txt.saltybox");
+
+        fs::create_dir(&output_dir).unwrap();
+        fs::write(&plain_path, b"secret").unwrap();
+
+        let original_permissions = fs::metadata(&output_dir).unwrap().permissions();
+        let mut unopenable_permissions = original_permissions.clone();
+        unopenable_permissions.set_mode(0o000);
+        fs::set_permissions(&output_dir, unopenable_permissions).unwrap();
+
+        // Root ignores directory permissions; skip rather than assert a
+        // failure that cannot happen (same pattern as the write-failure test
+        // above).
+        if fs::File::open(&output_dir).is_ok() {
+            fs::set_permissions(&output_dir, original_permissions).unwrap();
+            eprintln!(
+                "skipping unopenable-directory assertion because this process can still open it"
+            );
+            return;
+        }
+
+        let mut reader = ConstantPassphraseReader::new(b"test".to_vec());
+        let result = encrypt_with_default_engine(&plain_path, &crypt_path, &mut reader);
+
+        fs::set_permissions(&output_dir, original_permissions).unwrap();
+
+        let err = result.expect_err("expected unopenable output directory to fail");
+        let mut found_pre_write_framing = false;
+        let mut source: Option<&(dyn std::error::Error + 'static)> = Some(&err);
+        while let Some(e) = source {
+            let msg = e.to_string();
+            assert!(
+                !msg.contains("after writing"),
+                "message must not claim a write happened: {msg}"
+            );
+            if msg.contains("while preparing to write") {
+                found_pre_write_framing = true;
+            }
+            source = e.source();
+        }
+        assert!(
+            found_pre_write_framing,
+            "expected the pre-write framing in the error chain"
+        );
     }
 
     /// Pins the tempfile contract SPEC.md makes normative: the temporary
