@@ -89,6 +89,7 @@ impl PassphraseReader for ReaderPassphraseReader {
         Ok(data)
     }
 }
+
 /// Reads passphrase from terminal with no echo
 pub struct TerminalPassphraseReader;
 
