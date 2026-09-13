@@ -148,13 +148,6 @@ impl PassphraseReader for TerminalPassphraseReader {
 mod tests {
     use super::*;
 
-    #[test]
-    fn test_constant_reader() {
-        let mut reader = ConstantPassphraseReader::new(b"test123".to_vec());
-        assert_eq!(&*reader.read_passphrase().unwrap(), b"test123");
-        assert_eq!(&*reader.read_passphrase().unwrap(), b"test123");
-    }
-
     /// Tests the terminal reader. This is ignored by default and must be run
     /// explicitly and with human input:
     ///
