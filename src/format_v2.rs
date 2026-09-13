@@ -733,6 +733,11 @@ mod tests {
 
     /// Files routinely end with a newline; trailing whitespace after the
     /// ":end" marker is not truncation and must decrypt normally.
+    ///
+    /// SPEC.md promises this for any character with the Unicode White_Space
+    /// property, not just ASCII, so the cases include a non-breaking space
+    /// and an ideographic space: a regression to ASCII-only trimming would
+    /// misreport such a file as truncated while the ASCII cases stayed green.
     #[test]
     fn test_unarmor_ignores_trailing_whitespace_after_marker() {
         let armored = encrypt_deterministic(
@@ -746,7 +751,7 @@ mod tests {
         )
         .unwrap();
 
-        for suffix in ["\n", "\r\n", " ", "\n\n", "\t\n"] {
+        for suffix in ["\n", "\r\n", " ", "\n\n", "\t\n", "\u{a0}", "\u{3000}\n"] {
             let with_suffix = format!("{armored}{suffix}");
             let payload = V2Engine
                 .unarmor(&with_suffix)
@@ -808,6 +813,45 @@ mod tests {
                 err.message(),
                 "input does not end with the \":end\" marker; likely truncated",
                 "cut: {cut}"
+            );
+        }
+    }
+
+    /// Non-whitespace bytes after a valid ":end" marker are rejected, and
+    /// with the same missing-marker diagnostic as a lost tail.
+    ///
+    /// The marker must be the last non-whitespace thing in the input; this
+    /// is what stops a loosened check (say, finding the marker anywhere in
+    /// the tail) from accepting armor with corruption or paste debris after
+    /// it. The diagnostic reads "likely truncated" because that is what
+    /// SPEC.md specifies for any input not ending in the marker; the test
+    /// pins that wording rather than inventing a separate one for junk.
+    #[test]
+    fn test_unarmor_rejects_junk_after_end_marker() {
+        let armored = encrypt_deterministic(
+            b"pw",
+            b"junk fodder",
+            &TEST_SALT,
+            &TEST_NONCE,
+            TEST_M,
+            TEST_T,
+            TEST_P,
+        )
+        .unwrap();
+
+        // Junk directly after the marker, after a newline, and padded by
+        // whitespace on both sides: none of these end with the marker once
+        // trailing whitespace is trimmed, so all must be refused.
+        for junk in ["x", "\nx", " garbage\n"] {
+            let with_junk = format!("{armored}{junk}");
+            let err = V2Engine
+                .unarmor(&with_junk)
+                .expect_err(&format!("expected marker error for junk {junk:?}"));
+            assert_eq!(err.kind, Some(ErrorKind::ArmoringInvalid), "junk: {junk:?}");
+            assert_eq!(
+                err.message(),
+                "input does not end with the \":end\" marker; likely truncated",
+                "junk: {junk:?}"
             );
         }
     }
