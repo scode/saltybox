@@ -31,15 +31,14 @@ pub fn wrap(body: &[u8]) -> String {
 /// correctly marked payload whose base64 fails to decode.
 pub fn unwrap(armored: &str) -> Result<Vec<u8>> {
     if let Some(encoded) = armored.strip_prefix(V1_MAGIC) {
-        let body = URL_SAFE_NO_PAD.decode(encoded).map_err(|e| {
+        URL_SAFE_NO_PAD.decode(encoded).map_err(|e| {
             SaltyboxError::with_kind_and_source(
                 ErrorCategory::User,
                 ErrorKind::ArmoringDecode,
                 "base64 decoding failed",
                 e,
             )
-        })?;
-        Ok(body)
+        })
     } else if V1_MAGIC.starts_with(armored) {
         // A proper prefix of the magic marker (including empty input) is
         // exactly what truncation at an unlucky offset would produce; short
