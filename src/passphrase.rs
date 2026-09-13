@@ -78,9 +78,12 @@ impl PassphraseReader for ReaderPassphraseReader {
     /// Kernel pipe buffers hold a copy regardless.
     fn read_passphrase(&mut self) -> Result<Zeroizing<Vec<u8>>> {
         let mut data = Zeroizing::new(Vec::with_capacity(PASSPHRASE_BUFFER_CAPACITY));
+        // A failed read is the caller's environment (a closed or broken
+        // pipe, an unreadable redirect), not a defect in this program, so it
+        // is classified as a user error rather than internal.
         self.reader.read_to_end(&mut data).map_err(|e| {
             SaltyboxError::with_kind_and_source(
-                ErrorCategory::Internal,
+                ErrorCategory::User,
                 ErrorKind::Io,
                 "error reading passphrase",
                 e,
@@ -178,6 +181,36 @@ mod tests {
         let data = b"";
         let mut reader = ReaderPassphraseReader::new(Box::new(&data[..]));
         assert_eq!(&*reader.read_passphrase().unwrap(), b"");
+    }
+
+    /// A read failure on the passphrase source is a user error naming the
+    /// passphrase, with the I/O cause attached.
+    ///
+    /// The source is stdin under `--passphrase-stdin`, so a failure here is a
+    /// broken pipe or unreadable redirect in the caller's environment, not a
+    /// program defect: SPEC.md classifies it as a user error. Every other
+    /// test feeds an infallible byte slice, so without this one the error
+    /// mapping never runs under test and its classification could drift.
+    #[test]
+    fn test_reader_passphrase_reader_read_failure_is_user_error() {
+        /// A reader whose every read fails, standing in for a broken stdin.
+        struct FailingReader;
+
+        impl Read for FailingReader {
+            fn read(&mut self, _buf: &mut [u8]) -> io::Result<usize> {
+                Err(io::Error::other("simulated read failure"))
+            }
+        }
+
+        let mut reader = ReaderPassphraseReader::new(Box::new(FailingReader));
+        let err = reader
+            .read_passphrase()
+            .expect_err("expected read failure to surface");
+        assert_eq!(err.category, ErrorCategory::User);
+        assert_eq!(err.kind, Some(ErrorKind::Io));
+        assert_eq!(err.message(), "error reading passphrase");
+        let cause = std::error::Error::source(&err).expect("expected the I/O cause attached");
+        assert_eq!(cause.to_string(), "simulated read failure");
     }
 
     /// Guards the property the preallocation exists for: a realistic-size
