@@ -58,6 +58,8 @@ same file) is rejected.
 
 # Features and limitations
 
+- Only Unix-like systems (Linux and macOS) are supported. Windows is not: no binaries are released for it, nothing is
+  tested there, and the file-permission protections described below do not apply.
 - Files must fit comfortably in memory and there is no support for encrypting a stream in an incremental fashion.
 - There is no attempt to lock the passphrase or derived key into memory. The passphrase may be paged to disk by the
   operating system. You are responsible for the security of the device on which you run this program.
