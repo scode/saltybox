@@ -28,6 +28,11 @@ unset shell variable expands to empty) rather than intent. NOTE: this makes file
 older versions undecryptable by these commands. On any failure, commands exit with a nonzero status and report the error
 on standard error.
 
+Any I/O failure on a path the user supplied (an input file, the output file, or the output file's directory) is a user
+error: a missing file, a directory given where a file was expected, a permission denial, or an unwritable output
+directory are all the caller's environment. Internal failures are reserved for operations on paths the program chose
+itself, such as writing and syncing its own temporary file.
+
 Commands write their output file atomically via a same-directory temporary file (private on Unix; see Supported
 platforms): on success the output contains exactly the intended bytes, and no partial file ever appears at the output
 path under any circumstances. On any failure before the atomic rename, an existing file at the output path is left
