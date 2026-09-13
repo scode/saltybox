@@ -557,6 +557,14 @@ mod tests {
         assert_eq!(err.kind, Some(ErrorKind::AuthenticationFailed));
     }
 
+    /// In-place corruption anywhere in the sealed data, and any lengthening
+    /// of it, must fail authentication.
+    ///
+    /// The lengthening case pins what SPEC.md's "trailing data is impossible
+    /// by construction" rests on: sealed data runs to the end of the payload,
+    /// so an appended byte becomes part of what the tag must cover. A decrypt
+    /// that authenticated only a prefix would pass every in-place case and
+    /// the truncation tests while silently accepting appended bytes.
     #[test]
     fn test_tampered_ciphertext() {
         // First sealed byte is ciphertext proper; the last byte is inside the
@@ -574,6 +582,15 @@ mod tests {
                 "tampered at payload offset {offset}"
             );
         }
+
+        let mut lengthened = payload.clone();
+        lengthened.push(0x00);
+        let err = decrypt(b"pw", &lengthened).expect_err("expected authentication failure");
+        assert_eq!(
+            err.kind,
+            Some(ErrorKind::AuthenticationFailed),
+            "one byte appended to the sealed data"
+        );
     }
 
     /// Header flips that keep parameters in range must fail authentication:
