@@ -73,7 +73,9 @@ Failures are diagnosed per scenario, each with a distinct message:
   the failure. These are deliberately distinct from authentication failures.
 - A wrong passphrase, or sealed data that has been tampered with or corrupted, is rejected with a single
   authentication-failure diagnostic. There is no way to tell programmatically (or otherwise) which of the two occurred;
-  they are cryptographically indistinguishable.
+  they are cryptographically indistinguishable. "Single" is a promise within a format: the two causes share one
+  diagnostic, so nothing about the message reveals which one occurred. The wording may differ between saltybox1 and
+  saltybox2, since the format is already public from the magic prefix and reveals nothing about the cause.
 
 ### update
 
