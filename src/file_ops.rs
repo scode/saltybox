@@ -855,14 +855,21 @@ mod tests {
         assert_eq!(mode & 0o777, 0o600, "tempfile must be owner-only");
     }
 
+    /// A typoed output directory is a user error, and on Unix the message
+    /// names the directory and says it does not exist.
+    ///
+    /// SPEC.md promises a nonexistent output directory "is reported as such",
+    /// which is a promise about the wording: the classification alone would
+    /// still hold if the specific pre-check regressed to the generic
+    /// tempfile-creation failure, and only the message assertion catches
+    /// that. The wording comes from the Unix-only directory open that runs
+    /// before anything is written, hence the gate; Windows is unsupported.
     #[test]
     fn test_encrypt_to_missing_output_directory_is_user_error() {
         let temp_dir = TempDir::new().unwrap();
         let plain_path = temp_dir.path().join("plain.txt");
-        let crypt_path = temp_dir
-            .path()
-            .join("no-such-dir")
-            .join("crypt.txt.saltybox");
+        let output_dir = temp_dir.path().join("no-such-dir");
+        let crypt_path = output_dir.join("crypt.txt.saltybox");
 
         fs::write(&plain_path, b"secret").unwrap();
 
@@ -872,6 +879,22 @@ mod tests {
         let err = result.expect_err("expected missing output directory failure");
         assert_eq!(err.category, ErrorCategory::User);
         assert_eq!(err.kind, Some(ErrorKind::Io));
+
+        // The specific diagnostic sits below the "failed to write to"
+        // context the encrypt path adds, so look for it in the chain.
+        #[cfg(unix)]
+        {
+            let expected = format!("output directory {} does not exist", output_dir.display());
+            let mut source: Option<&(dyn std::error::Error + 'static)> = Some(&err);
+            let mut found = false;
+            while let Some(e) = source {
+                if e.to_string() == expected {
+                    found = true;
+                }
+                source = e.source();
+            }
+            assert!(found, "expected {expected:?} in the error chain: {err}");
+        }
     }
 
     #[test]
