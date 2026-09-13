@@ -234,15 +234,20 @@ fn write_file_secure(path: &Path, contents: &[u8]) -> Result<()> {
                 path.display()
             )
         };
-        SaltyboxError::with_kind_and_source(path_error_category(&e), ErrorKind::Io, msg, e)
+        // The output directory is the user's choice, so any failure opening
+        // it (missing, unreadable, not a directory) is a user error.
+        SaltyboxError::with_kind_and_source(ErrorCategory::User, ErrorKind::Io, msg, e)
     })?;
     let mut temp_file = tempfile::Builder::new()
         .prefix(TEMPFILE_PREFIX)
         .suffix(TEMPFILE_SUFFIX)
         .tempfile_in(output_dir)
         .map_err(|e| {
+            // Creating the tempfile is the first operation that depends on
+            // the output directory being writable, which is the user's
+            // environment (permissions, a read-only mount, a full disk).
             SaltyboxError::with_kind_and_source(
-                path_error_category(&e),
+                ErrorCategory::User,
                 ErrorKind::Io,
                 format!("failed to create tempfile for {}", path.display()),
                 e,
@@ -321,22 +326,16 @@ fn write_file_secure(path: &Path, contents: &[u8]) -> Result<()> {
     Ok(())
 }
 
-/// Categorizes a failed I/O operation on a user-supplied path.
+/// Wraps a failed read of a user-supplied path as a user error.
 ///
-/// A missing path is a user mistake (typoed input file or output directory);
-/// anything else is unexpected and treated as internal. Used on both the
-/// read and write sides so the same mistake gets the same categorization.
-fn path_error_category(err: &io::Error) -> ErrorCategory {
-    if err.kind() == io::ErrorKind::NotFound {
-        ErrorCategory::User
-    } else {
-        ErrorCategory::Internal
-    }
-}
-
+/// Every I/O failure on a path the user named is classified as a user error,
+/// not just a missing file: a directory passed as a file, a permission
+/// denial, an unreadable mount are all the caller's environment. Internal is
+/// reserved for failures on the tool's own tempfile writes and syncs, where
+/// the path was chosen by this code. SPEC.md states the split.
 fn read_error(path: &Path, err: io::Error) -> SaltyboxError {
     SaltyboxError::with_kind_and_source(
-        path_error_category(&err),
+        ErrorCategory::User,
         ErrorKind::Io,
         format!("failed to read from {}", path.display()),
         err,
@@ -949,10 +948,33 @@ mod tests {
         }
     }
 
+    /// A directory given as the input file is a user error, not internal.
+    ///
+    /// Reading a directory fails with something other than NotFound, so this
+    /// pins the half of SPEC.md's rule the nonexistent-input test does not:
+    /// every I/O failure on a user-supplied path is the user's, not just a
+    /// missing file. Before the rule, only NotFound was classified User and
+    /// this case was Internal. The CLI-level test cannot observe the
+    /// category; both produce the same nonzero exit.
+    #[test]
+    fn test_read_of_directory_as_input_is_user_error() {
+        let temp_dir = TempDir::new().unwrap();
+        let decrypted_path = temp_dir.path().join("decrypted.txt");
+
+        let mut reader = ConstantPassphraseReader::new(b"test".to_vec());
+        let result = decrypt_file(temp_dir.path(), &decrypted_path, &mut reader);
+
+        let err = result.expect_err("expected directory-as-input failure");
+        assert_eq!(err.category, ErrorCategory::User);
+        assert_eq!(err.kind, Some(ErrorKind::Io));
+        assert!(!decrypted_path.exists());
+    }
+
     #[test]
     fn test_read_of_nonexistent_input_is_user_error() {
-        // Pins read_error's NotFound categorization: a typoed input path is a
-        // user mistake, not an internal failure. The CLI-level test cannot
+        // Pins the NotFound half of SPEC.md's rule that I/O failures on
+        // user-supplied paths are user errors: a typoed input path is a user
+        // mistake, not an internal failure. The CLI-level test cannot
         // observe the category; both produce the same nonzero exit.
         let temp_dir = TempDir::new().unwrap();
         let missing_path = temp_dir.path().join("no-such-file.saltybox");
