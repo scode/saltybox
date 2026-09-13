@@ -8,7 +8,8 @@
 //! - salt: 8 bytes
 //! - nonce: 24 bytes
 //! - length: 8 bytes (big-endian signed int64)
-//! - sealed box: variable length (includes 16-byte Poly1305 MAC)
+//! - sealed box: variable length (includes 16-byte Poly1305 MAC), so the
+//!   length field is never legitimately below 16
 
 use crate::error::{ErrorCategory, ErrorKind, Result, SaltyboxError};
 use crypto_secretbox::aead::{Aead, KeyInit};
@@ -26,6 +27,14 @@ const NONCE_LEN: usize = 24;
 
 /// Length of derived key in bytes
 const KEY_LEN: usize = 32;
+
+/// Length of the Poly1305 authentication tag that leads every sealed box.
+///
+/// This is the floor for the length field: secretbox output is always the
+/// plaintext plus this tag, so a claimed length below it cannot have come from
+/// any genuine encryption and is a format error rather than something to hand
+/// to the cipher.
+const TAG_LEN: usize = 16;
 
 /// scrypt N parameter (CPU/memory cost)
 const SCRYPT_N: u32 = 32768;
@@ -205,6 +214,20 @@ pub fn decrypt(passphrase: &[u8], ciphertext: &[u8]) -> Result<Zeroizing<Vec<u8>
             "truncated or corrupt input (while reading sealed box)",
         ));
     }
+    // Checked only after the availability checks above so that a file that is
+    // both truncated and short-claiming is reported as truncated: that is the
+    // more likely story for real damage. A length below the tag floor that
+    // *is* fully present can only be a corrupt length field, and handing such
+    // a box to the cipher would collapse it into the authentication-failure
+    // message, misdirecting a user with the right passphrase toward it.
+    if sealed_box_len < TAG_LEN {
+        return Err(SaltyboxError::with_kind(
+            ErrorCategory::User,
+            ErrorKind::BinaryFormat,
+            "invalid sealed box length: shorter than the 16-byte authentication tag",
+        ));
+    }
+
     let sealed_box = &ciphertext[pos..pos + sealed_box_len];
     pos += sealed_box_len;
 
@@ -411,6 +434,39 @@ mod tests {
 
         let err = result.expect_err("expected truncated input error");
         assert_eq!(err.kind, Some(ErrorKind::TruncatedInput));
+    }
+
+    /// A length field below the 16-byte tag floor is structurally impossible
+    /// and must be a format error, not an authentication failure.
+    ///
+    /// Without this check the short box reaches the cipher, fails the tag
+    /// check there, and the user is told to suspect their passphrase. Uses a
+    /// genuine encryption with the correct passphrase so the only thing wrong
+    /// with the input is the length field; the box bytes are all present, so
+    /// the truncation checks do not fire first. Covers zero and the largest
+    /// short value to pin both ends of the rejected range.
+    #[test]
+    fn test_length_below_tag_floor_is_format_error() {
+        let passphrase = b"test";
+        let mut ciphertext = encrypt(passphrase, b"hello").unwrap();
+
+        for short_len in [0i64, (TAG_LEN - 1) as i64] {
+            ciphertext[SALT_LEN + NONCE_LEN..SALT_LEN + NONCE_LEN + 8]
+                .copy_from_slice(&short_len.to_be_bytes());
+
+            let err = decrypt(passphrase, &ciphertext)
+                .expect_err("expected binary format error for short sealed box length");
+            assert_eq!(
+                err.kind,
+                Some(ErrorKind::BinaryFormat),
+                "length {short_len}"
+            );
+            assert!(
+                err.to_string()
+                    .contains("shorter than the 16-byte authentication tag"),
+                "unexpected message for length {short_len}: {err}"
+            );
+        }
     }
 
     #[test]

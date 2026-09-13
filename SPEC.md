@@ -105,7 +105,8 @@ Binary payload layout, in order:
 - salt: 8 bytes
 - nonce: 24 bytes
 - length: 8 bytes, big-endian signed 64-bit integer; the byte length of the sealed box that follows. Negative values,
-  and values exceeding the available input, are rejected as format errors.
+  values below 16 (a sealed box is never shorter than its tag), and values exceeding the available input, are rejected
+  as format errors.
 - sealed box: NaCl secretbox (XSalsa20-Poly1305) output — a 16-byte Poly1305 tag followed by the ciphertext. The sealed
   box is always exactly 16 bytes longer than the plaintext; the plaintext is encrypted as provided, with no padding and
   no metadata.
