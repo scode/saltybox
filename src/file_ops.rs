@@ -195,6 +195,19 @@ fn paths_are_same_inode(_plain_path: &Path, _crypt_path: &Path) -> bool {
 /// survives crashes that happen after rename returns. On Unix the resulting
 /// file mode is `0600`.
 fn write_file_secure(path: &Path, contents: &[u8]) -> Result<()> {
+    // An empty path is almost always an unset shell variable, the same
+    // mistake the empty-passphrase check guards against. It is caught here
+    // by name rather than falling through to the parent lookup below, whose
+    // "no parent directory" wording describes the mechanism, not the mistake.
+    if path.as_os_str().is_empty() {
+        return Err(SaltyboxError::with_kind(
+            ErrorCategory::User,
+            ErrorKind::Io,
+            "empty output path is not allowed (note that an unset shell variable expands to empty)",
+        ));
+    }
+    // Only the filesystem root reaches this branch now; it is not a
+    // realistic output path and gets the mechanical description.
     let output_dir = path.parent().ok_or_else(|| {
         SaltyboxError::with_kind(
             ErrorCategory::User,
@@ -853,6 +866,45 @@ mod tests {
 
         let mode = fs::metadata(tempfile_path).unwrap().permissions().mode();
         assert_eq!(mode & 0o777, 0o600, "tempfile must be owner-only");
+    }
+
+    /// An empty output path is rejected by name as a user error, with the
+    /// unset-shell-variable hint, before anything is written.
+    ///
+    /// The realistic way to get here is `-o "$OUT"` with the variable unset,
+    /// the same mistake SPEC.md calls out for empty passphrases, and SPEC.md
+    /// promises the rejection says so. Before the dedicated check the empty
+    /// path fell through to the parent-directory lookup and was reported as
+    /// "no parent directory", a description of the mechanism rather than the
+    /// mistake. That nothing is written is not asserted: an empty path has
+    /// no directory to inspect short of the process working directory, and
+    /// the check runs before any tempfile is created.
+    #[test]
+    fn test_encrypt_to_empty_output_path_is_user_error() {
+        let temp_dir = TempDir::new().unwrap();
+        let plain_path = temp_dir.path().join("plain.txt");
+        fs::write(&plain_path, b"secret").unwrap();
+
+        let mut reader = ConstantPassphraseReader::new(b"test".to_vec());
+        let result = encrypt_with_default_engine(&plain_path, Path::new(""), &mut reader);
+
+        let err = result.expect_err("expected empty output path failure");
+        assert_eq!(err.category, ErrorCategory::User);
+        assert_eq!(err.kind, Some(ErrorKind::Io));
+        let mut found = false;
+        let mut source: Option<&(dyn std::error::Error + 'static)> = Some(&err);
+        while let Some(e) = source {
+            if e.to_string()
+                == "empty output path is not allowed (note that an unset shell variable expands to empty)"
+            {
+                found = true;
+            }
+            source = e.source();
+        }
+        assert!(
+            found,
+            "expected the empty-output-path diagnostic in the chain: {err}"
+        );
     }
 
     /// A typoed output directory is a user error, and on Unix the message

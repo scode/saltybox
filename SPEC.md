@@ -36,7 +36,8 @@ succeeded, the output has already been replaced — with complete contents — w
 failed or interrupted write may leave the temporary file (on Unix with owner-only permissions; name prefixed
 `.saltybox-`) behind in the output directory; rename failures report its path. Failures before the temporary file is
 created (such as an unusable output directory) leave nothing behind and are reported without implying a write took
-place; a nonexistent output directory is reported as such. On Unix the final output file mode is 0600.
+place; a nonexistent output directory is reported as such, and an empty output path is rejected as such (like an empty
+passphrase, it almost always means an unset shell variable). On Unix the final output file mode is 0600.
 
 ### encrypt
 
