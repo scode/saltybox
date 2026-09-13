@@ -949,6 +949,12 @@ fn test_update_identical_input_output_fails() {
     assert_eq!(decrypted_content, "Original content");
 }
 
+/// A missing input file fails with a nonzero exit, writes nothing, and
+/// reports the failure on stderr naming the path.
+///
+/// SPEC.md promises every failure is reported on standard error; the
+/// stderr assertion is what distinguishes this from a silent or
+/// wrong-reason failure, which the exit status alone would let through.
 #[test]
 fn test_decrypt_nonexistent_file_fails() {
     let temp_dir = TempDir::new().unwrap();
@@ -969,6 +975,11 @@ fn test_decrypt_nonexistent_file_fails() {
 
     assert!(!result.status.success());
     assert!(!output.exists());
+    let stderr = String::from_utf8_lossy(&result.stderr);
+    assert!(
+        stderr.contains(&format!("failed to read from {}", nonexistent.display())),
+        "expected the read failure naming the missing path, got: {stderr}"
+    );
 }
 
 #[test]
