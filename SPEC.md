@@ -139,8 +139,8 @@ Binary payload layout, in order:
 Key derivation: Argon2id version 0x13 over the passphrase and salt with the m, t, p values from the header, producing a
 32-byte key. The Argon2 version and key length are fixed properties of the saltybox2 format.
 
-Key-derivation parameters are validated BEFORE any key derivation work, so a hostile file cannot cause large memory or
-CPU consumption via its header. The accepted ranges are:
+Key-derivation parameters are validated BEFORE any key derivation work, so the memory and CPU a file's header can demand
+is bounded by the ceilings below rather than by the 32-bit fields. The accepted ranges are:
 
 - t: at least 1, at most 64
 - p: at least 1, at most 8
@@ -148,6 +148,12 @@ CPU consumption via its header. The accepted ranges are:
 
 Out-of-range parameters are a format error, deliberately distinct from authentication failure. Any in-range parameter
 combination decrypts normally; readers must not assume files were written with any particular parameter values.
+
+The ceilings are deliberately far above the write defaults, and that is a trade-off, not an oversight: a file from an
+untrusted source can legitimately cost up to the full ceiling (4 GiB of memory and 64 passes) before it fails
+authentication. The ceilings are wide so that files written with stronger-than-default parameters, by this or any other
+implementation, stay readable; they are a format constant, and lowering them would make existing files undecryptable.
+Users decrypting files from untrusted senders should expect that worst case, and readers must not tighten the ranges.
 
 The AEAD associated data is the ASCII armor magic `saltybox2:` concatenated with the entire header (salt, m, t, p,
 nonce). A successful decrypt therefore proves the whole envelope — version identifier included — was untampered.
