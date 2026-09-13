@@ -966,6 +966,101 @@ mod tests {
         assert_eq!(fs::read(&crypt_path).unwrap(), [0xff]);
     }
 
+    /// A structurally malformed existing ciphertext aborts `update` with the
+    /// same format diagnostic `decrypt` would give, and the file's bytes are
+    /// left exactly as they were.
+    ///
+    /// SPEC.md promises that the validation read fails in the same scenarios
+    /// as `decrypt`, with the same classifications, and that any such failure
+    /// leaves the existing file unchanged. The wrong-passphrase and non-UTF-8
+    /// tests pin two of those scenarios; this one pins the format-error class,
+    /// which is otherwise only tested through `decrypt`. Uses a real
+    /// ciphertext with its `:end` marker cut off so the input is valid UTF-8
+    /// and reaches the armor check rather than failing earlier.
+    #[test]
+    fn test_update_rejects_malformed_encrypted_input_unchanged() {
+        let temp_dir = TempDir::new().unwrap();
+        let plain_path = temp_dir.path().join("plain.txt");
+        let crypt_path = temp_dir.path().join("crypt.txt.saltybox");
+
+        fs::write(&plain_path, b"Initial").unwrap();
+        let mut reader = ConstantPassphraseReader::new(b"test".to_vec());
+        encrypt_with_default_engine(&plain_path, &crypt_path, &mut reader).unwrap();
+
+        let armored = fs::read_to_string(&crypt_path).unwrap();
+        let truncated = armored
+            .strip_suffix(":end")
+            .expect("default engine output ends with the v2 marker");
+        fs::write(&crypt_path, truncated).unwrap();
+
+        fs::write(&plain_path, b"Updated").unwrap();
+        let mut reader = ConstantPassphraseReader::new(b"test".to_vec());
+        let result = update_with_default_engine(&plain_path, &crypt_path, &mut reader);
+
+        let err = result.expect_err("expected armor rejection");
+        assert_eq!(err.category, ErrorCategory::User);
+        assert_eq!(err.kind, Some(ErrorKind::ArmoringInvalid));
+        assert_eq!(fs::read_to_string(&crypt_path).unwrap(), truncated);
+    }
+
+    /// `update` validates the passphrase against the existing file BEFORE it
+    /// reads the new plaintext: with a wrong passphrase and a missing
+    /// plaintext file, the error is the authentication failure, not the I/O
+    /// error.
+    ///
+    /// SPEC.md describes `update` as "validating first", and the order is
+    /// user-visible only when both steps would fail. Nothing else in the
+    /// suite would notice the two reads being swapped. Paired with
+    /// `test_update_missing_plaintext_after_validation_leaves_file_unchanged`,
+    /// which covers the correct-passphrase side of the same ordering.
+    #[test]
+    fn test_update_validates_passphrase_before_reading_plaintext() {
+        let temp_dir = TempDir::new().unwrap();
+        let plain_path = temp_dir.path().join("plain.txt");
+        let missing_path = temp_dir.path().join("missing.txt");
+        let crypt_path = temp_dir.path().join("crypt.txt.saltybox");
+
+        fs::write(&plain_path, b"Initial").unwrap();
+        let mut reader = ConstantPassphraseReader::new(b"correct password".to_vec());
+        encrypt_with_default_engine(&plain_path, &crypt_path, &mut reader).unwrap();
+
+        let mut reader = ConstantPassphraseReader::new(b"wrong password".to_vec());
+        let result = update_with_default_engine(&missing_path, &crypt_path, &mut reader);
+
+        let err = result.expect_err("expected authentication failure before plaintext read");
+        assert_eq!(err.kind, Some(ErrorKind::AuthenticationFailed));
+    }
+
+    /// A missing new-plaintext file, discovered after the passphrase has
+    /// validated, is a user I/O error and leaves the existing ciphertext
+    /// byte-for-byte unchanged.
+    ///
+    /// This is the point in `update` where validation has succeeded and the
+    /// only remaining failure is the user's own input path. The existing file
+    /// must not be touched: the write happens only after the new plaintext is
+    /// in hand. Companion to
+    /// `test_update_validates_passphrase_before_reading_plaintext`.
+    #[test]
+    fn test_update_missing_plaintext_after_validation_leaves_file_unchanged() {
+        let temp_dir = TempDir::new().unwrap();
+        let plain_path = temp_dir.path().join("plain.txt");
+        let missing_path = temp_dir.path().join("missing.txt");
+        let crypt_path = temp_dir.path().join("crypt.txt.saltybox");
+
+        fs::write(&plain_path, b"Initial").unwrap();
+        let mut reader = ConstantPassphraseReader::new(b"correct password".to_vec());
+        encrypt_with_default_engine(&plain_path, &crypt_path, &mut reader).unwrap();
+        let before = fs::read(&crypt_path).unwrap();
+
+        let mut reader = ConstantPassphraseReader::new(b"correct password".to_vec());
+        let result = update_with_default_engine(&missing_path, &crypt_path, &mut reader);
+
+        let err = result.expect_err("expected missing plaintext failure");
+        assert_eq!(err.category, ErrorCategory::User);
+        assert_eq!(err.kind, Some(ErrorKind::Io));
+        assert_eq!(fs::read(&crypt_path).unwrap(), before);
+    }
+
     /// Empty passphrases are rejected by every operation, including decrypt:
     /// SPEC.md makes files encrypted with an empty passphrase (possible in
     /// older versions) deliberately undecryptable.
