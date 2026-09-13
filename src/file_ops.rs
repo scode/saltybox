@@ -59,9 +59,7 @@ pub fn encrypt_file(
         .encrypt(&passphrase, &plaintext)
         .map_err(|e| e.with_context("encryption failed"))?;
     write_file_secure(output_path, armored.as_bytes())
-        .map_err(|e| e.with_context(format!("failed to write to {}", output_path.display())))?;
-
-    Ok(())
+        .map_err(|e| e.with_context(format!("failed to write to {}", output_path.display())))
 }
 
 /// Decrypt a file with a passphrase
@@ -92,8 +90,7 @@ pub fn decrypt_file(
         .decrypt(&passphrase, &ciphertext)
         .map_err(|e| e.with_context("failed to decrypt"))?;
     write_file_secure(output_path, &plaintext)
-        .map_err(|e| e.with_context(format!("failed to write to {}", output_path.display())))?;
-    Ok(())
+        .map_err(|e| e.with_context(format!("failed to write to {}", output_path.display())))
 }
 
 /// Update an encrypted file with new plaintext using the same passphrase
@@ -150,8 +147,7 @@ pub fn update_file(
     let new_armored = write_engine
         .encrypt(&passphrase, &new_plaintext)
         .map_err(|e| e.with_context("failed to encrypt"))?;
-    write_file_secure(crypt_path, new_armored.as_bytes())?;
-    Ok(())
+    write_file_secure(crypt_path, new_armored.as_bytes())
 }
 
 /// Detects whether the update input and output refer to the same file.

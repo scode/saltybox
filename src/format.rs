@@ -101,9 +101,10 @@ const ENGINES: &[&dyn FormatEngine] = &[&V1Engine, &V2Engine];
 /// single point that decides what format saltybox produces. Decryption
 /// support is intentionally broader: every engine in `ENGINES` stays
 /// readable forever regardless of what this returns. saltybox1 is
-/// decrypt-only — there is deliberately no way to write it from the CLI
-/// (tests exercise the v1 write direction through `secretcrypt_v1`
-/// directly).
+/// decrypt-only — there is deliberately no way to write it from the CLI.
+/// Only tests exercise the v1 write direction, through the v1 engine's
+/// encrypt (which keeps that impl from being dead code) or through
+/// `secretcrypt_v1` directly.
 pub fn default_write_engine() -> &'static dyn FormatEngine {
     &V2Engine
 }
