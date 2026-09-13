@@ -536,6 +536,52 @@ mod tests {
         assert_eq!(decrypted, original);
     }
 
+    /// A symlink to the ciphertext, passed as the new-plaintext input, must be
+    /// rejected and the ciphertext left intact.
+    ///
+    /// Symlinks are the alias class SPEC.md names explicitly, yet the
+    /// `..`-traversal test is the only one exercising the canonicalization
+    /// path. Two independent checks catch a symlink today: canonicalization
+    /// and, on Unix, the inode comparison, since `fs::metadata` follows
+    /// links. This test exists so that weakening both (say, replacing
+    /// canonicalization with textual normalization and dropping the inode
+    /// check as redundant) fails loudly instead of letting an update clobber
+    /// the file it was meant to read. Unix-only because creating symlinks
+    /// portably needs platform-specific APIs and Windows is unsupported.
+    #[test]
+    #[cfg(unix)]
+    fn test_update_rejects_symlink_alias_of_output_path() {
+        let temp_dir = TempDir::new().unwrap();
+        let plain_path = temp_dir.path().join("plain.txt");
+        let crypt_path = temp_dir.path().join("crypt.txt.saltybox");
+        let symlink_path = temp_dir.path().join("crypt-symlink.saltybox");
+
+        let original = b"Initial content";
+        fs::write(&plain_path, original).unwrap();
+
+        let mut reader = ConstantPassphraseReader::new(b"test password".to_vec());
+        encrypt_with_default_engine(&plain_path, &crypt_path, &mut reader).unwrap();
+
+        std::os::unix::fs::symlink(&crypt_path, &symlink_path).unwrap();
+
+        let mut reader = ConstantPassphraseReader::new(b"test password".to_vec());
+        let result = update_with_default_engine(&symlink_path, &crypt_path, &mut reader);
+
+        let err = result.expect_err("expected symlink path conflict failure");
+        assert_eq!(err.category, ErrorCategory::User);
+        assert_eq!(err.kind, Some(ErrorKind::Io));
+        assert_eq!(
+            err.message(),
+            "input and output paths must be different for update"
+        );
+
+        let decrypted_path = temp_dir.path().join("decrypted.txt");
+        let mut reader = ConstantPassphraseReader::new(b"test password".to_vec());
+        decrypt_file(&crypt_path, &decrypted_path, &mut reader).unwrap();
+        let decrypted = fs::read(&decrypted_path).unwrap();
+        assert_eq!(decrypted, original);
+    }
+
     #[test]
     #[cfg(unix)]
     fn test_update_rejects_hardlink_alias_of_output_path() {
