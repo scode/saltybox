@@ -8,6 +8,13 @@ NOTE: Coverage is deliberately incremental. Behavior not described here is exist
 When a change touches user-visible behavior, the touched area must be specified — including its pre-existing behavior —
 in the same change. `AGENTS.md` states the compliance rule.
 
+## Supported platforms
+
+saltybox is supported on Unix-like systems (Linux and macOS). Windows is not supported: the code may compile there, but
+no Windows binaries are released, nothing is tested on Windows, and the file-permission guarantees below are
+deliberately Unix-only. Output and temporary files written on Windows carry no access restriction beyond what the output
+directory grants.
+
 ## Commands
 
 All commands take a passphrase: interactively from the terminal with echo disabled, or — when the global
@@ -19,15 +26,15 @@ always means a mistake (an unset shell variable expands to empty) rather than in
 with an empty passphrase by older versions undecryptable by these commands. On any failure, commands exit with a nonzero
 status and report the error on standard error.
 
-Commands write their output file atomically via a same-directory private temporary file: on success the output contains
-exactly the intended bytes, and no partial file ever appears at the output path under any circumstances. On any failure
-before the atomic rename, an existing file at the output path is left unchanged. (One narrow exception to "unchanged on
-failure": if making the rename durable fails after the rename itself succeeded, the output has already been replaced —
-with complete contents — while the command still exits nonzero.) A failed or interrupted write may leave the temporary
-file (on Unix with owner-only permissions; name prefixed `.saltybox-`) behind in the output directory; rename failures
-report its path. Failures before the temporary file is created (such as an unusable output directory) leave nothing
-behind and are reported without implying a write took place; a nonexistent output directory is reported as such. On Unix
-the final output file mode is 0600.
+Commands write their output file atomically via a same-directory temporary file (private on Unix; see Supported
+platforms): on success the output contains exactly the intended bytes, and no partial file ever appears at the output
+path under any circumstances. On any failure before the atomic rename, an existing file at the output path is left
+unchanged. (One narrow exception to "unchanged on failure": if making the rename durable fails after the rename itself
+succeeded, the output has already been replaced — with complete contents — while the command still exits nonzero.) A
+failed or interrupted write may leave the temporary file (on Unix with owner-only permissions; name prefixed
+`.saltybox-`) behind in the output directory; rename failures report its path. Failures before the temporary file is
+created (such as an unusable output directory) leave nothing behind and are reported without implying a write took
+place; a nonexistent output directory is reported as such. On Unix the final output file mode is 0600.
 
 ### encrypt
 
