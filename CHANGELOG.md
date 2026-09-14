@@ -5,6 +5,21 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/), and this project adheres to
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [5.0.1] - 2026-09-14
+
+### Changed
+
+- State that Windows is unsupported (#237)
+- Say the Argon2 ceilings bound cost rather than prevent it (#238)
+- Scope the single authentication diagnostic to one format (#247)
+
+### Fixed
+
+- Reject impossibly short saltybox1 sealed box as a format error (#236)
+- Classify a failed stdin passphrase read as a user error (#245)
+- Reject an empty output path by name (#246)
+- Classify every I/O failure on a user-supplied path as a user error (#248)
+
 ## [5.0.0] - 2026-07-17
 
 ### Added
@@ -57,6 +72,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 
 ## [1.0.0] - 2017-12-02
 
+[5.0.1]: https://github.com/scode/saltybox/compare/v5.0.0..v5.0.1
 [5.0.0]: https://github.com/scode/saltybox/compare/v4.0.0..v5.0.0
 [4.0.0]: https://github.com/scode/saltybox/compare/v3.3.1..v4.0.0
 [3.3.1]: https://github.com/scode/saltybox/compare/v3.3.0..v3.3.1
