@@ -62,8 +62,9 @@ permissions; name prefixed `.saltybox-`) behind in the output directory. Any fai
 creating the temporary file, including a failed rename, removes it; if that removal also fails, the error names the
 temporary file so it can be removed by hand. Failures before the temporary file is created (such as an unusable output
 directory) leave nothing behind and are reported without implying a write took place; a nonexistent output directory is
-reported as such, and an empty output path is rejected as such (like an empty passphrase, it almost always means an
-unset shell variable). On Unix the final output file mode is 0600.
+reported as such, an empty output path is rejected as such (like an empty passphrase, it almost always means an unset
+shell variable), and so is an output path that ends in a path separator, which can only name a directory
+(`-o "$DIR/$NAME"` with `NAME` unset produces one). On Unix the final output file mode is 0600.
 
 On Unix, the directory the output file is written in must be readable as well as writable. It is opened before the
 temporary file is created, so that the directory can be synced after the rename and the new directory entry survives a
