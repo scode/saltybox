@@ -66,10 +66,18 @@ reported as such, an empty output path is rejected as such (like an empty passph
 shell variable), and so is an output path that ends in a path separator, which can only name a directory
 (`-o "$DIR/$NAME"` with `NAME` unset produces one). On Unix the final output file mode is 0600.
 
-On Unix, the directory the output file is written in must be readable as well as writable. It is opened before the
-temporary file is created, so that the directory can be synced after the rename and the new directory entry survives a
-crash. A directory that cannot be opened for reading (for example a write-only drop-box directory) is therefore refused
-as a user error, even though creating a file in it would otherwise succeed.
+When the output path is a symbolic link, or a chain of them, commands follow it and replace the file it ultimately
+points to: the temporary file is created in that file's directory and renamed onto that file, and the link itself is
+left in place. The file `update` validates the passphrase against and the file it replaces are therefore always the same
+file. An output symlink whose target does not exist is rejected as a user error rather than followed to create the
+target. When writing, hard links get no special treatment: the output path's name is replaced like any other file, and
+other names for the old file keep its old contents.
+
+On Unix, the directory the output file is written in (for a symlinked output path, the directory of the file it points
+to) must be readable as well as writable. It is opened before the temporary file is created, so that the directory can
+be synced after the rename and the new directory entry survives a crash. A directory that cannot be opened for reading
+(for example a write-only drop-box directory) is therefore refused as a user error, even though creating a file in it
+would otherwise succeed.
 
 ### encrypt
 
