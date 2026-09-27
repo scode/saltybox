@@ -54,6 +54,7 @@ pub fn encrypt_file(
     passphrase_reader: &mut dyn PassphraseReader,
     write_engine: &dyn format::FormatEngine,
 ) -> Result<()> {
+    check_output_path(output_path)?;
     let plaintext = Zeroizing::new(fs::read(input_path).map_err(|e| read_error(input_path, e))?);
     let passphrase = read_nonempty_passphrase(passphrase_reader)?;
     let armored = write_engine
@@ -75,6 +76,7 @@ pub fn decrypt_file(
     output_path: &Path,
     passphrase_reader: &mut dyn PassphraseReader,
 ) -> Result<()> {
+    check_output_path(output_path)?;
     let armored_bytes = fs::read(input_path).map_err(|e| read_error(input_path, e))?;
     let armored = String::from_utf8(armored_bytes).map_err(|e| {
         SaltyboxError::with_kind_and_source(
@@ -116,6 +118,7 @@ pub fn update_file(
     passphrase_reader: &mut dyn PassphraseReader,
     write_engine: &dyn format::FormatEngine,
 ) -> Result<()> {
+    check_output_path(crypt_path)?;
     // Prevent treating the existing ciphertext as new plaintext when paths alias.
     if update_paths_conflict(plain_path, crypt_path) {
         return Err(SaltyboxError::with_kind(
@@ -185,17 +188,20 @@ fn paths_are_same_inode(_plain_path: &Path, _crypt_path: &Path) -> bool {
     false
 }
 
-/// Replaces a file through a private same-directory temporary file.
+/// Rejects output paths that cannot name a file, before any I/O touches them.
 ///
-/// Successful writes sync the tempfile contents on every platform; on Unix
-/// they additionally sync the containing directory so the replacement
-/// survives crashes that happen after rename returns. On Unix the resulting
-/// file mode is `0600`. Any failure after the tempfile is created removes it;
-/// if removal fails, the returned error names the tempfile.
-fn write_file_secure(path: &Path, contents: &[u8]) -> Result<()> {
+/// Both cases are almost always a shell variable that expanded to empty, and
+/// both get a message that says so rather than whatever the first filesystem
+/// call would report. All three commands run this first, before reading
+/// input or prompting for a passphrase: it only looks at the argument, so a
+/// bad `-o` should fail before the user types a passphrase and waits out key
+/// derivation (and, for `update`, before the read of the existing file would
+/// fail with a generic read error). `write_file_secure` runs it again as a
+/// guard for any future caller.
+fn check_output_path(path: &Path) -> Result<()> {
     // An empty path is almost always an unset shell variable, the same
     // mistake the empty-passphrase check guards against. It is caught here
-    // by name rather than falling through to the parent lookup below, whose
+    // by name rather than falling through to the parent lookup in `write_file_secure`, whose
     // "no parent directory" wording describes the mechanism, not the mistake.
     if path.as_os_str().is_empty() {
         return Err(SaltyboxError::with_kind(
@@ -204,8 +210,45 @@ fn write_file_secure(path: &Path, contents: &[u8]) -> Result<()> {
             "empty output path is not allowed (note that an unset shell variable expands to empty)",
         ));
     }
-    // Only the filesystem root reaches this branch now; it is not a
-    // realistic output path and gets the mechanical description.
+    // A path ending in a separator can only name a directory. It has to be
+    // caught before the parent lookup in `write_file_secure`, because `Path` ignores trailing
+    // separators: `nodir/` would yield parent "" (so "."), the directory
+    // check would pass on the working directory, and a tempfile holding the
+    // output would be created there before the rename finally failed. Like an
+    // empty path, it is usually an unset shell variable (`-o "$DIR/$NAME"`).
+    // Checking the last encoded byte is sound because every separator is ASCII,
+    // and bytes of multi-byte characters in UTF-8 and WTF-8 are always >= 0x80.
+    if path
+        .as_os_str()
+        .as_encoded_bytes()
+        .last()
+        .is_some_and(|&b| std::path::is_separator(char::from(b)))
+    {
+        return Err(SaltyboxError::with_kind(
+            ErrorCategory::User,
+            ErrorKind::Io,
+            format!(
+                "output path {} ends in a path separator, so it names a directory rather than a file (an unset shell variable at the end of the path, as in \"$DIR/$NAME\", produces this)",
+                path.display()
+            ),
+        ));
+    }
+    Ok(())
+}
+
+/// Replaces a file through a private same-directory temporary file.
+///
+/// Successful writes sync the tempfile contents on every platform; on Unix
+/// they additionally sync the containing directory so the replacement
+/// survives crashes that happen after rename returns. On Unix the resulting
+/// file mode is `0600`. Any failure after the tempfile is created removes it;
+/// if removal fails, the returned error names the tempfile.
+fn write_file_secure(path: &Path, contents: &[u8]) -> Result<()> {
+    check_output_path(path)?;
+    // The empty path and trailing separators (including the root `/`) are
+    // rejected by `check_output_path`, so on Unix only a path such as `/.`,
+    // whose final component `Path` normalizes away, reaches this branch; it
+    // keeps the mechanical description.
     let output_dir = path.parent().ok_or_else(|| {
         SaltyboxError::with_kind(
             ErrorCategory::User,
@@ -252,9 +295,9 @@ fn write_file_secure(path: &Path, contents: &[u8]) -> Result<()> {
         return Err(discard_tempfile(temp_file, e));
     }
     if let Err(tempfile::PersistError { error, file }) = temp_file.persist(path) {
-        // The rename target is the path the user gave with `-o`, and realistic
-        // failures (the path names a directory, or ends in a separator) are
-        // the user's mistake, so this is a user error per SPEC.md.
+        // The rename target is the path the user gave with `-o`, and the
+        // realistic failure (the path names an existing directory) is the
+        // user's mistake, so this is a user error per SPEC.md.
         let err = SaltyboxError::with_kind_and_source(
             ErrorCategory::User,
             ErrorKind::Io,
@@ -1046,6 +1089,130 @@ mod tests {
             found,
             "expected the empty-output-path diagnostic in the chain: {err}"
         );
+    }
+
+    /// An output path ending in a separator is rejected by the up-front path
+    /// check, before any output-path I/O or tempfile creation, for `encrypt`.
+    ///
+    /// `Path::parent` ignores the trailing separator, so without the check
+    /// `nodir/` resolved its directory to the path's parent, created a
+    /// tempfile holding the output (plaintext, for `decrypt`) there, and only
+    /// failed at the rename with an error that did not name the cause. The
+    /// tempfile cleanup would also leave no tempfile behind, so the absence of
+    /// a source error is what proves the rejection happens up front rather
+    /// than at the failed rename. The path lives under a scratch directory so
+    /// the test never touches the process working directory.
+    #[test]
+    fn test_encrypt_to_path_ending_in_separator_is_rejected_up_front() {
+        let temp_dir = TempDir::new().unwrap();
+        let plain_path = temp_dir.path().join("plain.txt");
+        fs::write(&plain_path, b"secret").unwrap();
+        let crypt_path = temp_dir.path().join("nodir/");
+
+        let mut reader = ConstantPassphraseReader::new(b"test".to_vec());
+        let err = encrypt_with_default_engine(&plain_path, &crypt_path, &mut reader)
+            .expect_err("expected trailing-separator output path failure");
+
+        assert_eq!(err.category, ErrorCategory::User);
+        assert_eq!(err.kind, Some(ErrorKind::Io));
+        assert!(
+            err.to_string().contains("ends in a path separator"),
+            "msg: {err}"
+        );
+        assert!(
+            std::error::Error::source(&err).is_none(),
+            "rejected by the path check, not by a failed I/O call"
+        );
+        let entries: Vec<_> = fs::read_dir(temp_dir.path())
+            .unwrap()
+            .map(|entry| entry.unwrap().file_name().into_string().unwrap())
+            .collect();
+        assert_eq!(entries, ["plain.txt"]);
+    }
+
+    /// Every command rejects a bad output path before it reads its input or
+    /// asks for a passphrase.
+    ///
+    /// The path check only looks at the argument, so it runs first: a bad
+    /// `-o` must not make the user type a passphrase and wait out key
+    /// derivation first. The input path here does not exist, so a read before
+    /// the check would surface as a read error instead, and the reader panics
+    /// if asked for a passphrase. Both the empty path and a trailing
+    /// separator are covered, for `encrypt`, `decrypt` and `update`.
+    #[test]
+    fn test_bad_output_path_is_rejected_before_input_read_and_prompt() {
+        struct PanickingReader;
+        impl PassphraseReader for PanickingReader {
+            fn read_passphrase(&mut self) -> Result<Zeroizing<Vec<u8>>> {
+                panic!("the passphrase must not be requested before the output path is checked");
+            }
+        }
+
+        let temp_dir = TempDir::new().unwrap();
+        let missing_input = temp_dir.path().join("missing-input");
+        let trailing = temp_dir.path().join("nodir/");
+        for (output, expected) in [
+            (Path::new(""), "empty output path is not allowed"),
+            (trailing.as_path(), "ends in a path separator"),
+        ] {
+            let results = [
+                encrypt_with_default_engine(&missing_input, output, &mut PanickingReader),
+                decrypt_file(&missing_input, output, &mut PanickingReader),
+                update_with_default_engine(&missing_input, output, &mut PanickingReader),
+            ];
+            for result in results {
+                let err = result.expect_err("expected output path rejection");
+                assert!(err.to_string().contains(expected), "msg: {err}");
+                assert!(std::error::Error::source(&err).is_none());
+            }
+        }
+    }
+
+    /// `update` rejects an output path ending in a separator with the same
+    /// specific message, instead of failing first on reading the existing
+    /// file (which is what happened before it ran the path check itself).
+    /// SPEC.md promises the rejection for every command.
+    #[test]
+    fn test_update_to_path_ending_in_separator_is_rejected_up_front() {
+        let temp_dir = TempDir::new().unwrap();
+        let plain_path = temp_dir.path().join("plain.txt");
+        fs::write(&plain_path, b"secret").unwrap();
+        let crypt_path = temp_dir.path().join("nodir/");
+
+        let mut reader = ConstantPassphraseReader::new(b"test".to_vec());
+        let err = update_with_default_engine(&plain_path, &crypt_path, &mut reader)
+            .expect_err("expected trailing-separator output path failure");
+
+        assert_eq!(err.category, ErrorCategory::User);
+        assert_eq!(err.kind, Some(ErrorKind::Io));
+        assert!(
+            err.to_string().contains("ends in a path separator"),
+            "msg: {err}"
+        );
+        assert!(std::error::Error::source(&err).is_none());
+    }
+
+    /// `update` rejects an empty output path with the empty-path message
+    /// rather than a generic error from reading "" as the existing file.
+    /// SPEC.md promises that rejection for every command; this pins that
+    /// `update` runs the path check before its read.
+    #[test]
+    fn test_update_to_empty_output_path_is_rejected_up_front() {
+        let temp_dir = TempDir::new().unwrap();
+        let plain_path = temp_dir.path().join("plain.txt");
+        fs::write(&plain_path, b"secret").unwrap();
+
+        let mut reader = ConstantPassphraseReader::new(b"test".to_vec());
+        let err = update_with_default_engine(&plain_path, Path::new(""), &mut reader)
+            .expect_err("expected empty output path failure");
+
+        assert_eq!(err.category, ErrorCategory::User);
+        assert_eq!(err.kind, Some(ErrorKind::Io));
+        assert!(
+            err.to_string().contains("empty output path is not allowed"),
+            "msg: {err}"
+        );
+        assert!(std::error::Error::source(&err).is_none());
     }
 
     /// A typoed output directory is a user error, and on Unix the message
