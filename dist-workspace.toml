@@ -22,3 +22,12 @@ install-path = "CARGO_HOME"
 install-updater = true
 # Plan jobs to run in CI
 plan-jobs = ["./release-plan-tests"]
+
+# Commit SHAs for the actions dist writes into release.yml, so regenerating the
+# workflow keeps them pinned as SPEC.md (Build integrity) requires. dist copies
+# each value verbatim after the `@`, so the ` # vX.Y.Z` suffix is deliberate: it
+# becomes the trailing version comment on every generated `uses:` line.
+[dist.github-action-commits]
+"actions/checkout" = "d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0"
+"actions/upload-artifact" = "b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6.0.0"
+"actions/download-artifact" = "37930b1c2abaa49bbe596cd826c3c89aef350131 # v7.0.0"
