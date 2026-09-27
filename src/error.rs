@@ -59,6 +59,9 @@ pub enum ErrorKind {
     ScryptFailure,
     /// Low-level Argon2 key derivation failed.
     Argon2Failure,
+    /// The machine could not supply the memory key derivation requires (the
+    /// Argon2 memory cost from the file header, or the write default).
+    KeyDerivationOutOfMemory,
     /// The AEAD (XChaCha20-Poly1305) failed while sealing data.
     ///
     /// Open failures are reported as `AuthenticationFailed` because callers

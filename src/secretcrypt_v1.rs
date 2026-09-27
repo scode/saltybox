@@ -51,7 +51,6 @@ fn derive_key(passphrase: &[u8], salt: &[u8; SALT_LEN]) -> Result<Zeroizing<[u8;
         SCRYPT_N.trailing_zeros() as u8, // log_n
         SCRYPT_R,
         SCRYPT_P,
-        KEY_LEN,
     )
     .map_err(|e| {
         SaltyboxError::with_kind_and_source(

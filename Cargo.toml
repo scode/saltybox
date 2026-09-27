@@ -15,22 +15,23 @@ name = "saltybox"
 path = "src/bin/saltybox.rs"
 
 [dependencies]
-# std: saltybox errors carry their underlying cause as a source, so the CLI
-# can print a "caused by" chain. That requires the cause to implement
-# std::error::Error, which argon2::Error only does with the std feature
-# enabled; without it, argon2 failures would have to be flattened into
-# plain text messages.
+# Default features are off because they only add password-hash string support
+# saltybox never uses. alloc provides hash_password_into, the one call made.
 # zeroize: makes argon2 wipe the internal buffers that are equivalent to the
 # derived key (the passphrase-derived initial hash and the final block hash)
 # instead of leaving them behind in freed memory.
-argon2 = { version = "0.5", features = ["std", "zeroize"] }
-base64 = "0.22"
-chacha20poly1305 = "0.10"
+argon2 = { version = "0.6", default-features = false, features = ["alloc", "zeroize"] }
+base64 = "0.23"
+# zeroize: wipes the cipher's copy of the key, and the ChaCha20 state derived
+# from it, when they are dropped. Before 0.11 chacha20poly1305 did both
+# unconditionally; from 0.11 it is opt-in, and leaving the feature off would
+# silently drop those wipes.
+chacha20poly1305 = { version = "0.11", features = ["zeroize"] }
 clap = { version = "4.5", features = ["derive"] }
 crypto_secretbox = "0.1"
 rand = "0.10"
 rpassword = "7.4"
-scrypt = "0.11"
+scrypt = "0.12"
 tempfile = "3.25"
 thiserror = "2.0"
 zeroize = "1.8"
