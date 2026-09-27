@@ -5,6 +5,22 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/), and this project adheres to
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [6.0.0] - 2026-09-27
+
+### Added
+
+- Reject passphrases containing a line break (#261)
+- Ask for the passphrase twice on interactive encrypt (#262)
+
+### Fixed
+
+- Remove the temporary file when writing the output fails (#258)
+- Reject output paths that end in a path separator (#259)
+- Write through symlinked output paths instead of replacing the link (#260)
+- Refuse --passphrase-stdin when stdin is a terminal (#263)
+- Name trailing whitespace in saltybox1 decrypt errors (#264)
+- Upgrade argon2, base64, chacha20poly1305 and scrypt (#266)
+
 ## [5.0.1] - 2026-09-14
 
 ### Changed
@@ -72,6 +88,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 
 ## [1.0.0] - 2017-12-02
 
+[6.0.0]: https://github.com/scode/saltybox/compare/v5.0.1..v6.0.0
 [5.0.1]: https://github.com/scode/saltybox/compare/v5.0.0..v5.0.1
 [5.0.0]: https://github.com/scode/saltybox/compare/v4.0.0..v5.0.0
 [4.0.0]: https://github.com/scode/saltybox/compare/v3.3.1..v4.0.0
