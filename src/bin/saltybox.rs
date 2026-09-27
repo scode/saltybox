@@ -18,7 +18,7 @@ use saltybox::passphrase::{PassphraseReader, ReaderPassphraseReader, TerminalPas
 #[command(version)]
 #[command(about = "Passphrase-based file encryption.", long_about = None)]
 struct Cli {
-    /// Read passphrase from stdin (must not contain a line break; use `echo -n` or `printf '%s' "$PASS"`)
+    /// Read passphrase from stdin, which must be a pipe or file, not a terminal (must not contain a line break; use `echo -n` or `printf '%s' "$PASS"`)
     #[arg(long, global = true)]
     passphrase_stdin: bool,
 
@@ -99,7 +99,7 @@ fn main() -> ExitCode {
 
 fn get_passphrase_reader(use_stdin: bool) -> Box<dyn PassphraseReader> {
     if use_stdin {
-        Box::new(ReaderPassphraseReader::new(Box::new(std::io::stdin())))
+        Box::new(ReaderPassphraseReader::stdin())
     } else {
         Box::new(TerminalPassphraseReader)
     }

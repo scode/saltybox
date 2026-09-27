@@ -99,16 +99,42 @@ const PASSPHRASE_BUFFER_CAPACITY: usize = 4096;
 /// Reads passphrase from any io::Read source
 pub struct ReaderPassphraseReader {
     reader: Box<dyn Read>,
+    /// Whether the source is an interactive terminal, in which case reading
+    /// is refused (see [`ReaderPassphraseReader::stdin`]). Computed once when
+    /// the reader is built rather than probed inside `read_passphrase`, which
+    /// lets tests exercise the refusal without a real terminal.
+    source_is_terminal: bool,
 }
 
 impl ReaderPassphraseReader {
+    /// Wraps an arbitrary non-terminal source.
     pub fn new(reader: Box<dyn Read>) -> Self {
-        Self { reader }
+        Self {
+            reader,
+            source_is_terminal: false,
+        }
+    }
+
+    /// Wraps the process's stdin, as `--passphrase-stdin` does, refusing to
+    /// read when stdin is a terminal.
+    ///
+    /// This reader reads with echo on, so a user who runs the command by hand
+    /// with `--passphrase-stdin` would have the passphrase printed as they
+    /// type and kept in the terminal's scrollback and any session recording.
+    /// SPEC.md requires refusing instead and pointing at the no-echo prompt.
+    pub fn stdin() -> Self {
+        let stdin = io::stdin();
+        let source_is_terminal = stdin.is_terminal();
+        Self {
+            reader: Box::new(stdin),
+            source_is_terminal,
+        }
     }
 }
 
 impl PassphraseReader for ReaderPassphraseReader {
-    /// Reads all bytes until end-of-input.
+    /// Reads all bytes until end-of-input. A terminal source (see
+    /// [`ReaderPassphraseReader::stdin`]) is refused before anything is read.
     ///
     /// Bytes are returned unmodified, including any trailing newline:
     /// `file_ops` rejects passphrases containing a line break, and stripping
@@ -120,13 +146,20 @@ impl PassphraseReader for ReaderPassphraseReader {
     /// directly into the pre-reserved spare capacity without reallocating.
     /// What the wrapped reader does internally is outside this type's
     /// control — wrapping the source in a `BufReader`, for example, would
-    /// stage bytes in a buffer that never gets wiped. The reader the CLI
-    /// passes here is `std::io::stdin()`, whose `read_to_end` delegates to
+    /// stage bytes in a buffer that never gets wiped. The reader
+    /// [`ReaderPassphraseReader::stdin`] wraps is `std::io::stdin()`, whose `read_to_end` delegates to
     /// the underlying fd rather than staging bytes in its `BufReader`
     /// (verified against std's implementation as of Rust 1.93; if that
     /// drifts, the result is an unwiped copy, not incorrect behavior).
     /// Kernel pipe buffers hold a copy regardless.
     fn read_passphrase(&mut self) -> Result<Zeroizing<Vec<u8>>> {
+        if self.source_is_terminal {
+            return Err(SaltyboxError::with_kind(
+                ErrorCategory::User,
+                ErrorKind::PassphraseUnavailable,
+                "--passphrase-stdin requires stdin to be a pipe or a file, not a terminal (omit it to be prompted for the passphrase without echo)",
+            ));
+        }
         let mut data = Zeroizing::new(Vec::with_capacity(PASSPHRASE_BUFFER_CAPACITY));
         // A failed read is the caller's environment (a closed or broken
         // pipe, an unreadable redirect), not a defect in this program, so it
@@ -268,6 +301,39 @@ mod tests {
         let data = b"pw\r\n";
         let mut reader = ReaderPassphraseReader::new(Box::new(&data[..]));
         assert_eq!(&*reader.read_passphrase().unwrap(), b"pw\r\n");
+    }
+
+    /// A stdin reader whose source is a terminal refuses to read, as a user
+    /// error pointing at the prompt, without reading any input.
+    ///
+    /// This reader reads with echo on, so typing a passphrase into it by hand
+    /// would print it to the screen and leave it in scrollback. SPEC.md
+    /// requires the refusal. The source panics if read, so a change that read
+    /// first and refused afterwards (echoing the passphrase anyway) fails the
+    /// test. The flag is set directly rather than probed, so the test needs no
+    /// terminal and does not touch the process's own stdin.
+    #[test]
+    fn test_reader_passphrase_reader_refuses_terminal_source() {
+        struct UnreadableTerminal;
+        impl Read for UnreadableTerminal {
+            fn read(&mut self, _buf: &mut [u8]) -> io::Result<usize> {
+                panic!("a terminal source must be refused before it is read");
+            }
+        }
+
+        let mut reader = ReaderPassphraseReader {
+            reader: Box::new(UnreadableTerminal),
+            source_is_terminal: true,
+        };
+        let err = reader
+            .read_passphrase()
+            .expect_err("expected a terminal source to be refused");
+        assert_eq!(err.category, ErrorCategory::User);
+        assert_eq!(err.kind, Some(ErrorKind::PassphraseUnavailable));
+        assert_eq!(
+            err.message(),
+            "--passphrase-stdin requires stdin to be a pipe or a file, not a terminal (omit it to be prompted for the passphrase without echo)"
+        );
     }
 
     /// A read failure on the passphrase source is a user error naming the

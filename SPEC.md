@@ -40,7 +40,9 @@ All commands take a passphrase: interactively from the terminal with echo disabl
 is stripped, and the passphrase need not be valid UTF-8). A failure to read standard input under `--passphrase-stdin` (a
 broken pipe, an unreadable redirect) is a user error reported as a passphrase read failure with the underlying cause,
 not an internal failure. Without `--passphrase-stdin`, commands fail when standard input is not a terminal rather than
-attempting to read a passphrase.
+attempting to read a passphrase. Conversely, with `--passphrase-stdin`, commands fail when standard input is a terminal:
+that input is read with echo on, so a passphrase typed there would be printed as it is typed and kept in the terminal's
+scrollback. Omitting the option gives the no-echo prompt instead.
 
 An empty passphrase is an error for every command, regardless of how the passphrase was provided: it offers no
 meaningful protection, and empty input almost always means a mistake (an unset shell variable expands to empty) rather
