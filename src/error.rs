@@ -22,7 +22,8 @@ pub enum ErrorCategory {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 #[non_exhaustive]
 pub enum ErrorKind {
-    /// The armored representation is truncated or does not start with a saltybox prefix.
+    /// The armored representation is not text (not valid UTF-8), is truncated,
+    /// or does not start with a saltybox prefix.
     ArmoringInvalid,
     /// The armored payload could not be decoded: base64 decoding failed, or
     /// (saltybox1) the payload ends with whitespace the format does not allow.
