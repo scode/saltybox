@@ -111,14 +111,8 @@ pub fn decrypt_file(
 ) -> Result<()> {
     check_output_path(output_path)?;
     let armored_bytes = fs::read(input_path).map_err(|e| read_error(input_path, e))?;
-    let armored = String::from_utf8(armored_bytes).map_err(|e| {
-        SaltyboxError::with_kind_and_source(
-            ErrorCategory::User,
-            ErrorKind::Io,
-            "input file is not valid UTF-8",
-            e,
-        )
-    })?;
+    let armored = String::from_utf8(armored_bytes)
+        .map_err(|e| not_text_error("input file is not valid UTF-8", e))?;
     let passphrase = read_valid_passphrase(passphrase_reader)?;
     let (engine, ciphertext) =
         format::decode(&armored).map_err(|e| e.with_context("failed to unarmor"))?;
@@ -164,14 +158,8 @@ pub fn update_file(
     }
 
     let armored_bytes = fs::read(crypt_path).map_err(|e| read_error(crypt_path, e))?;
-    let armored = String::from_utf8(armored_bytes).map_err(|e| {
-        SaltyboxError::with_kind_and_source(
-            ErrorCategory::User,
-            ErrorKind::Io,
-            "encrypted file is not valid UTF-8",
-            e,
-        )
-    })?;
+    let armored = String::from_utf8(armored_bytes)
+        .map_err(|e| not_text_error("encrypted file is not valid UTF-8", e))?;
     let passphrase = read_valid_passphrase(passphrase_reader)?;
 
     // Validate passphrase by decrypting existing file (discard plaintext)
@@ -516,6 +504,15 @@ fn discard_tempfile(temp_file: NamedTempFile, err: SaltyboxError) -> SaltyboxErr
             cleanup_err
         )),
     }
+}
+
+/// Wraps the rejection of an encrypted file that is not valid UTF-8.
+///
+/// The read itself succeeded; what failed is the armor's requirement that the
+/// file be text, so this is an armoring error (`ArmoringInvalid`), not an I/O
+/// one, and a user error like every other malformed input.
+fn not_text_error(msg: &'static str, err: std::string::FromUtf8Error) -> SaltyboxError {
+    SaltyboxError::with_kind_and_source(ErrorCategory::User, ErrorKind::ArmoringInvalid, msg, err)
 }
 
 /// Wraps a failed read of a user-supplied path as a user error.
@@ -1556,6 +1553,11 @@ mod tests {
         assert_eq!(fs::read(&decrypted_path).unwrap(), b"old plaintext");
     }
 
+    /// Input that is not valid UTF-8 is rejected before any format
+    /// interpretation (SPEC.md), tagged as an armoring error: the read itself
+    /// succeeded, and what failed is the armor's requirement that the file
+    /// be text. Tagging it as I/O would misdescribe it as a filesystem
+    /// problem.
     #[test]
     fn test_decrypt_rejects_non_utf8_armored_input() {
         let temp_dir = TempDir::new().unwrap();
@@ -1569,11 +1571,16 @@ mod tests {
 
         let err = result.expect_err("expected UTF-8 rejection");
         assert_eq!(err.category, ErrorCategory::User);
-        assert_eq!(err.kind, Some(ErrorKind::Io));
+        assert_eq!(err.kind, Some(ErrorKind::ArmoringInvalid));
         assert_eq!(err.message(), "input file is not valid UTF-8");
         assert!(!decrypted_path.exists());
     }
 
+    /// `update` rejects an existing file that is not valid UTF-8 the same way
+    /// `decrypt` does, as an armoring error, and leaves the file unchanged.
+    /// SPEC.md promises that `update`'s validation read classifies failures
+    /// exactly as `decrypt` does and leaves the existing file unchanged on
+    /// failure; this pins the non-UTF-8 case.
     #[test]
     fn test_update_rejects_non_utf8_encrypted_input() {
         let temp_dir = TempDir::new().unwrap();
@@ -1588,7 +1595,7 @@ mod tests {
 
         let err = result.expect_err("expected UTF-8 rejection");
         assert_eq!(err.category, ErrorCategory::User);
-        assert_eq!(err.kind, Some(ErrorKind::Io));
+        assert_eq!(err.kind, Some(ErrorKind::ArmoringInvalid));
         assert_eq!(err.message(), "encrypted file is not valid UTF-8");
         assert_eq!(fs::read(&crypt_path).unwrap(), [0xff]);
     }
