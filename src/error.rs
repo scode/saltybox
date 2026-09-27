@@ -24,7 +24,8 @@ pub enum ErrorCategory {
 pub enum ErrorKind {
     /// The armored representation is truncated or does not start with a saltybox prefix.
     ArmoringInvalid,
-    /// Base64 decoding of the armored payload failed.
+    /// The armored payload could not be decoded: base64 decoding failed, or
+    /// (saltybox1) the payload ends with whitespace the format does not allow.
     ArmoringDecode,
     /// Input claimed to be saltybox but used a future/unsupported version.
     ArmoringFromFuture,

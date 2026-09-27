@@ -121,6 +121,9 @@ Failures are diagnosed per scenario, each with a distinct message:
 - saltybox2 input that does not end with the `:end` marker is rejected as likely truncated, with a message naming the
   missing marker (a plain-text aid; not a cryptographic check).
 - Input with a supported magic whose base64 body fails to decode is rejected as an armor decoding error.
+- saltybox1 input ending in whitespace, such as a final newline, is rejected with a message naming the trailing
+  whitespace rather than as a generic decoding error. saltybox1 allows no whitespace at all (unlike saltybox2, which
+  ignores whitespace after `:end`), so such a file only decrypts once the whitespace is removed.
 - Structurally malformed binary payloads — truncated fields, invalid length fields, out-of-range key-derivation
   parameters, trailing data where the format forbids it — are rejected as format errors with a diagnostic specific to
   the failure. These are deliberately distinct from authentication failures.

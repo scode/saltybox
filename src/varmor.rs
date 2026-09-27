@@ -27,10 +27,25 @@ pub fn wrap(body: &[u8]) -> String {
 ///
 /// Decode failures are diagnosed per scenario: input that is a prefix of the
 /// magic marker (likely truncation), input claiming a saltybox version we do
-/// not support, input that does not look like saltybox data at all, and a
+/// not support, input that does not look like saltybox data at all, a
+/// correctly marked payload followed by trailing whitespace (which the format
+/// forbids, diagnosed as such rather than as a base64 failure), and a
 /// correctly marked payload whose base64 fails to decode.
 pub fn unwrap(armored: &str) -> Result<Vec<u8>> {
     if let Some(encoded) = armored.strip_prefix(V1_MAGIC) {
+        // saltybox1 allows no whitespace at all, so this is still a rejection,
+        // but a trailing newline is a likely way for an old file to stop
+        // decrypting (an editor save or `echo >>` adds one), and base64's
+        // "Invalid symbol 10, offset N" does not tell the user that. The
+        // predicate is `char::is_whitespace`, the definition `str::trim_end`
+        // (and so saltybox2's `:end` handling) uses; it covers `\n` and `\r`.
+        if encoded.ends_with(char::is_whitespace) {
+            return Err(SaltyboxError::with_kind(
+                ErrorCategory::User,
+                ErrorKind::ArmoringDecode,
+                "saltybox1 data ends with whitespace (such as a newline), which this format does not allow; remove it",
+            ));
+        }
         URL_SAFE_NO_PAD.decode(encoded).map_err(|e| {
             SaltyboxError::with_kind_and_source(
                 ErrorCategory::User,
@@ -186,6 +201,30 @@ mod tests {
         // The message no longer embeds the decode failure text, so the source
         // must stay attached for the CLI's "caused by" chain to surface it.
         assert!(std::error::Error::source(&err).is_some());
+    }
+
+    /// saltybox1 data followed by trailing whitespace is rejected with a
+    /// message that names the whitespace, not base64's "Invalid symbol 10".
+    ///
+    /// The format allows no whitespace, so rejecting is correct per SPEC.md;
+    /// the point is the diagnosis. saltybox1 files are old files people have
+    /// kept around, and an editor or `echo >>` appending a newline is the
+    /// likely way one stops decrypting. `\r\n`, a space, and a tab are
+    /// covered because the check uses `str::trim_end`, like saltybox2.
+    #[test]
+    fn test_trailing_whitespace_is_diagnosed() {
+        let armored = wrap(b"hello");
+        for suffix in ["\n", "\r\n", " ", "\t"] {
+            let err = unwrap(&format!("{armored}{suffix}"))
+                .expect_err("trailing whitespace must still be rejected");
+            assert_eq!(err.kind, Some(ErrorKind::ArmoringDecode));
+            assert_eq!(
+                err.message(),
+                "saltybox1 data ends with whitespace (such as a newline), which this format does not allow; remove it",
+                "suffix {suffix:?}"
+            );
+            assert!(std::error::Error::source(&err).is_none());
+        }
     }
 
     #[test]
