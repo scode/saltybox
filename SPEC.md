@@ -1,8 +1,9 @@
 # saltybox specification
 
 This document specifies saltybox's user-visible behavior (the command-line interface and the on-disk file formats) and
-the few project-level rules that constrain what saltybox is (see Project scope). It is a specification of what users and
-other implementations can rely on, not documentation of the implementation. Implementation details do not belong here.
+the few project-level rules that constrain what saltybox is and how it is built (see Project scope and Build integrity).
+It is a specification of what users and other implementations can rely on, not documentation of the implementation.
+Implementation details do not belong here.
 
 NOTE: Coverage is deliberately incremental. Behavior not described here is existing-but-unspecified, not nonexistent.
 When a change touches user-visible behavior, the touched area must be specified — including its pre-existing behavior —
@@ -15,6 +16,15 @@ document describes, and nothing else. The Rust crate happens to be split into a 
 an implementation convenience: the library's public items exist only to serve the `saltybox` binary and make no
 affordances for external consumers. Behavior that is reachable only by calling the library directly, and not through the
 command line, is not part of any contract.
+
+## Build integrity
+
+Every `uses:` reference in a GitHub Actions workflow (a step's action or a job's reusable workflow) to anything outside
+this repository pins it by full commit SHA (or, for a container image, by digest), never by a tag or branch, with the
+version that SHA corresponds to in a trailing comment (for example `actions/checkout@<40-hex-sha> # v5.1.0`). A tag or
+branch can be moved by whoever controls the action's repository, and every later run would then silently execute the new
+code; a commit SHA cannot be moved. The rule covers `uses:` references only: the Rust toolchain version, runner images,
+and tools that workflow steps download and run are not covered. `AGENTS.md` describes how to upgrade a pinned action.
 
 ## Supported platforms
 
