@@ -93,7 +93,10 @@ commit_parsers = [
   # Conventional Commit types excluded from changelog (non-user-visible).
   { message = "^(docs|doc|refactor|style|test|chore|ci)(\\([^\\)]+\\))?!?:", skip = true },
 ]
-# Prevent commits that are breaking from being excluded by commit parsers.
+# Drop commits that match none of the commit parsers above. This does not
+# protect breaking changes from the skip parsers (that is
+# `protect_breaking_commits`, which is off), so a breaking commit marked
+# `changelog: skip` is still left out of the changelog.
 filter_commits = true
 # Order releases topologically instead of chronologically.
 topo_order = false
