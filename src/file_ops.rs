@@ -8,7 +8,7 @@ use crate::format;
 use crate::passphrase::PassphraseReader;
 use std::fs;
 use std::io::{self, Write};
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use tempfile::NamedTempFile;
 use zeroize::Zeroizing;
 
@@ -46,7 +46,9 @@ fn read_nonempty_passphrase(reader: &mut dyn PassphraseReader) -> Result<Zeroizi
 /// Which format is written is the caller's choice via `write_engine`; the
 /// CLI always passes [`format::default_write_engine`].
 ///
-/// Output is written atomically via a same-directory temporary file.
+/// Output is written atomically via a same-directory temporary file. A
+/// symlinked `output_path` is followed and the file it ultimately points to
+/// is replaced; the temporary file goes in that file's directory.
 /// On Unix systems, the final file mode is set to 0o600 (read/write for owner only).
 pub fn encrypt_file(
     input_path: &Path,
@@ -69,7 +71,9 @@ pub fn encrypt_file(
 /// Reads armored ciphertext from `input_path`, decrypts it using a passphrase from
 /// `passphrase_reader`, and writes the plaintext to `output_path`.
 ///
-/// Output is written atomically via a same-directory temporary file.
+/// Output is written atomically via a same-directory temporary file. A
+/// symlinked `output_path` is followed and the file it ultimately points to
+/// is replaced; the temporary file goes in that file's directory.
 /// On Unix systems, the final file mode is set to 0o600 (read/write for owner only).
 pub fn decrypt_file(
     input_path: &Path,
@@ -102,7 +106,9 @@ pub fn decrypt_file(
 /// 1. Decrypts the existing file at `crypt_path` to validate the passphrase
 /// 2. Reads new plaintext from `plain_path`
 /// 3. Encrypts the new plaintext with the validated passphrase
-/// 4. Atomically writes to `crypt_path` (tempfile + fsync + rename)
+/// 4. Atomically writes to `crypt_path` (tempfile + fsync + rename); a
+///    symlinked `crypt_path` is followed, so the file validated in step 1 is
+///    the file replaced here
 ///
 /// The atomic write ensures that either the old file or the new file exists,
 /// never a partial/corrupted file.
@@ -152,6 +158,7 @@ pub fn update_file(
         .encrypt(&passphrase, &new_plaintext)
         .map_err(|e| e.with_context("failed to encrypt"))?;
     write_file_secure(crypt_path, new_armored.as_bytes())
+        .map_err(|e| e.with_context(format!("failed to write to {}", crypt_path.display())))
 }
 
 /// Detects whether the update input and output refer to the same file.
@@ -238,6 +245,9 @@ fn check_output_path(path: &Path) -> Result<()> {
 
 /// Replaces a file through a private same-directory temporary file.
 ///
+/// A symlinked `path` is followed to the file it ultimately points to, and
+/// that file is replaced; see [`resolve_output_symlink`].
+///
 /// Successful writes sync the tempfile contents on every platform; on Unix
 /// they additionally sync the containing directory so the replacement
 /// survives crashes that happen after rename returns. On Unix the resulting
@@ -245,6 +255,10 @@ fn check_output_path(path: &Path) -> Result<()> {
 /// if removal fails, the returned error names the tempfile.
 fn write_file_secure(path: &Path, contents: &[u8]) -> Result<()> {
     check_output_path(path)?;
+    // Everything below writes next to, and renames onto, the file a symlinked
+    // output path ultimately points to rather than the link itself.
+    let resolved = resolve_output_symlink(path)?;
+    let path = resolved.as_deref().unwrap_or(path);
     // The empty path and trailing separators (including the root `/`) are
     // rejected by `check_output_path`, so on Unix only a path such as `/.`,
     // whose final component `Path` normalizes away, reaches this branch; it
@@ -295,9 +309,10 @@ fn write_file_secure(path: &Path, contents: &[u8]) -> Result<()> {
         return Err(discard_tempfile(temp_file, e));
     }
     if let Err(tempfile::PersistError { error, file }) = temp_file.persist(path) {
-        // The rename target is the path the user gave with `-o`, and the
-        // realistic failure (the path names an existing directory) is the
-        // user's mistake, so this is a user error per SPEC.md.
+        // The rename target is the output path the user gave with `-o`, or the
+        // file it ultimately points to when it is a symlink; the realistic
+        // failure (it names an existing directory) is the user's mistake, so
+        // this is a user error per SPEC.md.
         let err = SaltyboxError::with_kind_and_source(
             ErrorCategory::User,
             ErrorKind::Io,
@@ -320,6 +335,59 @@ fn write_file_secure(path: &Path, contents: &[u8]) -> Result<()> {
         })?;
     }
     Ok(())
+}
+
+/// Resolves an output path that is a symbolic link to the file it ultimately
+/// points to, following chains of links. Returns `None` when the path is not
+/// a symlink, when nothing exists there yet, or when it cannot be inspected
+/// at all, so the caller writes to the path as given; in the last case the
+/// caller's directory open reports the failure with its own message.
+///
+/// Writing through the link keeps reads and writes consistent. The final
+/// step of a write renames a tempfile onto the output path, and a rename
+/// replaces the directory entry it lands on: aimed at the link, it would turn
+/// the link into a regular file and leave the real file stale. For `update`,
+/// which has just validated the passphrase by reading the existing file
+/// through the link, that meant reporting success while the file it checked
+/// was never updated.
+///
+/// A link whose target does not exist is refused rather than followed to
+/// create the target, as SPEC.md requires. Hard links need no handling here;
+/// renaming onto one name simply leaves the file's other names with the old
+/// contents.
+fn resolve_output_symlink(path: &Path) -> Result<Option<PathBuf>> {
+    match fs::symlink_metadata(path) {
+        Ok(meta) if meta.file_type().is_symlink() => match fs::canonicalize(path) {
+            Ok(target) => Ok(Some(target)),
+            Err(e) if e.kind() == io::ErrorKind::NotFound => {
+                // Naming where the link points is what the user needs to fix
+                // it; for a chain this is the first hop.
+                let msg = match fs::read_link(path) {
+                    Ok(target) => format!(
+                        "output path {} is a symlink to {}, which does not exist",
+                        path.display(),
+                        target.display()
+                    ),
+                    Err(_) => format!(
+                        "output path {} is a symlink to a nonexistent file",
+                        path.display()
+                    ),
+                };
+                Err(SaltyboxError::with_kind(
+                    ErrorCategory::User,
+                    ErrorKind::Io,
+                    msg,
+                ))
+            }
+            Err(e) => Err(SaltyboxError::with_kind_and_source(
+                ErrorCategory::User,
+                ErrorKind::Io,
+                format!("failed to resolve output symlink {}", path.display()),
+                e,
+            )),
+        },
+        _ => Ok(None),
+    }
 }
 
 /// Creates the private tempfile a write goes through, in `output_dir` so the
@@ -687,6 +755,130 @@ mod tests {
         decrypt_file(&crypt_path, &decrypted_path, &mut reader).unwrap();
         let decrypted = fs::read(&decrypted_path).unwrap();
         assert_eq!(decrypted, original);
+    }
+
+    /// `update` through a symlinked output path replaces the file the link
+    /// points to and leaves the link in place.
+    ///
+    /// The passphrase check reads the existing file through the link, so the
+    /// write has to land on the same file: renaming onto the link itself used
+    /// to replace the link with a regular file and leave the real file (the
+    /// one that was validated) holding the old ciphertext, while reporting
+    /// success. SPEC.md now requires reads and writes to agree.
+    #[test]
+    #[cfg(unix)]
+    fn test_update_through_symlink_replaces_target_and_keeps_link() {
+        let temp_dir = TempDir::new().unwrap();
+        let vault_dir = temp_dir.path().join("vault");
+        fs::create_dir(&vault_dir).unwrap();
+        let real_path = vault_dir.join("secret.salty");
+        let link_path = temp_dir.path().join("link.salty");
+        let plain_path = temp_dir.path().join("plain.txt");
+
+        fs::write(&plain_path, b"old").unwrap();
+        let mut reader = ConstantPassphraseReader::new(b"pw".to_vec());
+        encrypt_with_default_engine(&plain_path, &real_path, &mut reader).unwrap();
+        std::os::unix::fs::symlink(&real_path, &link_path).unwrap();
+
+        fs::write(&plain_path, b"new").unwrap();
+        let mut reader = ConstantPassphraseReader::new(b"pw".to_vec());
+        update_with_default_engine(&plain_path, &link_path, &mut reader).unwrap();
+
+        assert!(
+            fs::symlink_metadata(&link_path)
+                .unwrap()
+                .file_type()
+                .is_symlink(),
+            "the link must survive the update"
+        );
+        let decrypted_path = temp_dir.path().join("decrypted.txt");
+        let mut reader = ConstantPassphraseReader::new(b"pw".to_vec());
+        decrypt_file(&real_path, &decrypted_path, &mut reader).unwrap();
+        assert_eq!(fs::read(&decrypted_path).unwrap(), b"new");
+        // Nothing was left behind in the target's directory.
+        let mut vault_entries: Vec<_> = fs::read_dir(&vault_dir)
+            .unwrap()
+            .map(|entry| entry.unwrap().file_name().into_string().unwrap())
+            .collect();
+        vault_entries.sort();
+        assert_eq!(vault_entries, ["secret.salty"]);
+    }
+
+    /// A chain of symlinks is followed to the final file, which the output
+    /// replaces, and every link in the chain survives. This is the
+    /// "ultimate target" half of the SPEC.md rule: resolving only one level
+    /// would still overwrite a link.
+    #[test]
+    #[cfg(unix)]
+    fn test_encrypt_through_symlink_chain_replaces_final_target() {
+        let temp_dir = TempDir::new().unwrap();
+        let plain_path = temp_dir.path().join("plain.txt");
+        let target_path = temp_dir.path().join("target.salty");
+        let inner_link = temp_dir.path().join("inner.salty");
+        let outer_link = temp_dir.path().join("outer.salty");
+
+        fs::write(&plain_path, b"payload").unwrap();
+        fs::write(&target_path, b"placeholder").unwrap();
+        std::os::unix::fs::symlink(&target_path, &inner_link).unwrap();
+        std::os::unix::fs::symlink(&inner_link, &outer_link).unwrap();
+
+        let mut reader = ConstantPassphraseReader::new(b"pw".to_vec());
+        encrypt_with_default_engine(&plain_path, &outer_link, &mut reader).unwrap();
+
+        for link in [&inner_link, &outer_link] {
+            assert!(
+                fs::symlink_metadata(link).unwrap().file_type().is_symlink(),
+                "{} must still be a symlink",
+                link.display()
+            );
+        }
+        let decrypted_path = temp_dir.path().join("decrypted.txt");
+        let mut reader = ConstantPassphraseReader::new(b"pw".to_vec());
+        decrypt_file(&target_path, &decrypted_path, &mut reader).unwrap();
+        assert_eq!(fs::read(&decrypted_path).unwrap(), b"payload");
+    }
+
+    /// An output symlink whose target does not exist is refused as a user
+    /// error naming where the link points, and neither the target nor
+    /// anything else is created. SPEC.md requires refusing rather than
+    /// following the link to create its target.
+    #[test]
+    #[cfg(unix)]
+    fn test_output_symlink_to_nonexistent_file_is_rejected() {
+        let temp_dir = TempDir::new().unwrap();
+        let plain_path = temp_dir.path().join("plain.txt");
+        let missing_target = temp_dir.path().join("missing.salty");
+        let link_path = temp_dir.path().join("dangling.salty");
+
+        fs::write(&plain_path, b"payload").unwrap();
+        std::os::unix::fs::symlink(&missing_target, &link_path).unwrap();
+
+        let mut reader = ConstantPassphraseReader::new(b"pw".to_vec());
+        let err = encrypt_with_default_engine(&plain_path, &link_path, &mut reader)
+            .expect_err("expected dangling output symlink to be refused");
+
+        assert_eq!(err.category, ErrorCategory::User);
+        assert_eq!(err.kind, Some(ErrorKind::Io));
+        let mut chain = String::new();
+        let mut source: Option<&(dyn std::error::Error + 'static)> = Some(&err);
+        while let Some(e) = source {
+            chain.push_str(&e.to_string());
+            chain.push('\n');
+            source = e.source();
+        }
+        assert!(
+            chain.contains(&format!(
+                "is a symlink to {}, which does not exist",
+                missing_target.display()
+            )),
+            "chain: {chain}"
+        );
+        let mut entries: Vec<_> = fs::read_dir(temp_dir.path())
+            .unwrap()
+            .map(|entry| entry.unwrap().file_name().into_string().unwrap())
+            .collect();
+        entries.sort();
+        assert_eq!(entries, ["dangling.salty", "plain.txt"]);
     }
 
     #[test]
