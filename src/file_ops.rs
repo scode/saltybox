@@ -9,6 +9,7 @@ use crate::passphrase::PassphraseReader;
 use std::fs;
 use std::io::{self, Write};
 use std::path::Path;
+use tempfile::NamedTempFile;
 use zeroize::Zeroizing;
 
 const TEMPFILE_PREFIX: &str = ".saltybox-";
@@ -189,7 +190,8 @@ fn paths_are_same_inode(_plain_path: &Path, _crypt_path: &Path) -> bool {
 /// Successful writes sync the tempfile contents on every platform; on Unix
 /// they additionally sync the containing directory so the replacement
 /// survives crashes that happen after rename returns. On Unix the resulting
-/// file mode is `0600`.
+/// file mode is `0600`. Any failure after the tempfile is created removes it;
+/// if removal fails, the returned error names the tempfile.
 fn write_file_secure(path: &Path, contents: &[u8]) -> Result<()> {
     // An empty path is almost always an unset shell variable, the same
     // mistake the empty-passphrase check guards against. It is caught here
@@ -234,22 +236,66 @@ fn write_file_secure(path: &Path, contents: &[u8]) -> Result<()> {
         // it (missing, unreadable, not a directory) is a user error.
         SaltyboxError::with_kind_and_source(ErrorCategory::User, ErrorKind::Io, msg, e)
     })?;
-    let mut temp_file = tempfile::Builder::new()
-        .prefix(TEMPFILE_PREFIX)
-        .suffix(TEMPFILE_SUFFIX)
-        .tempfile_in(output_dir)
-        .map_err(|e| {
-            // Creating the tempfile is the first operation that depends on
-            // the output directory being writable, which is the user's
-            // environment (permissions, a read-only mount, a full disk).
+    let mut temp_file = create_tempfile(output_dir).map_err(|e| {
+        // Creating the tempfile is the first operation that depends on
+        // the output directory being writable, which is the user's
+        // environment (permissions, a read-only mount, a full disk).
+        SaltyboxError::with_kind_and_source(
+            ErrorCategory::User,
+            ErrorKind::Io,
+            format!("failed to create tempfile for {}", path.display()),
+            e,
+        )
+    })?;
+
+    if let Err(e) = fill_tempfile(&mut temp_file, path, contents) {
+        return Err(discard_tempfile(temp_file, e));
+    }
+    if let Err(tempfile::PersistError { error, file }) = temp_file.persist(path) {
+        // The rename target is the path the user gave with `-o`, and realistic
+        // failures (the path names a directory, or ends in a separator) are
+        // the user's mistake, so this is a user error per SPEC.md.
+        let err = SaltyboxError::with_kind_and_source(
+            ErrorCategory::User,
+            ErrorKind::Io,
+            format!("failed to rename to target file {}", path.display()),
+            error,
+        );
+        return Err(discard_tempfile(file, err));
+    }
+    #[cfg(unix)]
+    {
+        // `fill_tempfile`'s sync covers the bytes. The directory sync makes the
+        // rename itself durable so a crash cannot lose the new directory entry.
+        output_dir_file.sync_all().map_err(|e| {
             SaltyboxError::with_kind_and_source(
-                ErrorCategory::User,
+                ErrorCategory::Internal,
                 ErrorKind::Io,
-                format!("failed to create tempfile for {}", path.display()),
+                format!("failed to sync directory after writing {}", path.display()),
                 e,
             )
         })?;
+    }
+    Ok(())
+}
 
+/// Creates the private tempfile a write goes through, in `output_dir` so the
+/// final rename stays within one filesystem and is atomic.
+///
+/// The name (`.saltybox-` prefix, `.tmp` suffix) and, on Unix, the
+/// owner-only mode are part of SPEC.md's contract: a tempfile left behind by
+/// a crash has to be recognizable, and must not expose plaintext to other
+/// users while it exists.
+fn create_tempfile(output_dir: &Path) -> io::Result<NamedTempFile> {
+    tempfile::Builder::new()
+        .prefix(TEMPFILE_PREFIX)
+        .suffix(TEMPFILE_SUFFIX)
+        .tempfile_in(output_dir)
+}
+
+/// Writes, flushes, syncs, and (on Unix) restricts the tempfile, so a rename
+/// that follows always publishes complete, durable, owner-only contents.
+fn fill_tempfile(temp_file: &mut NamedTempFile, path: &Path, contents: &[u8]) -> Result<()> {
     temp_file.write_all(contents).map_err(|e| {
         SaltyboxError::with_kind_and_source(
             ErrorCategory::Internal,
@@ -292,34 +338,44 @@ fn write_file_secure(path: &Path, contents: &[u8]) -> Result<()> {
                 )
             })?;
     }
-
-    temp_file.persist(path).map_err(|e| {
-        let tempfile_path = e.file.path().display().to_string();
-        SaltyboxError::with_kind_and_source(
-            ErrorCategory::Internal,
-            ErrorKind::Io,
-            format!(
-                "failed to rename to target file {}; tempfile may still exist at {} and may need manual removal",
-                path.display(),
-                tempfile_path
-            ),
-            e,
-        )
-    })?;
-    #[cfg(unix)]
-    {
-        // The file sync above covers the bytes. The directory sync makes the
-        // rename itself durable so a crash cannot lose the new directory entry.
-        output_dir_file.sync_all().map_err(|e| {
-            SaltyboxError::with_kind_and_source(
-                ErrorCategory::Internal,
-                ErrorKind::Io,
-                format!("failed to sync directory after writing {}", path.display()),
-                e,
-            )
-        })?;
-    }
     Ok(())
+}
+
+/// Removes the tempfile after a failure that happened once it existed, and
+/// returns the failure's error, extended when the removal itself fails.
+///
+/// Every failure between creating the tempfile and a successful rename goes
+/// through here. The removal is explicit instead of being left to
+/// `NamedTempFile`'s destructor for two reasons. The destructor ignores a
+/// failed removal, and for `decrypt` a leftover tempfile is a copy of the
+/// plaintext, so the user has to be told where it is. And the destructor ties
+/// removal to whoever ends up holding the handle, and does not run at all if
+/// the process exits without unwinding.
+///
+/// The file is removed with `fs::remove_file` on the bare path rather than
+/// `NamedTempFile::close`, whose error text repeats the path; the message
+/// below names the path once and keeps the OS error's own wording, which is
+/// more specific than its `io::ErrorKind`. A tempfile that is already gone
+/// (`NotFound`) counts as removed.
+fn discard_tempfile(temp_file: NamedTempFile, err: SaltyboxError) -> SaltyboxError {
+    let (file, temp_path) = temp_file.into_parts();
+    drop(file);
+    let removal = fs::remove_file(&temp_path);
+    // Disarm the `TempPath` destructor: removal was just attempted, and a
+    // silent second attempt could only hide what the message below reports.
+    let tempfile_path = match temp_path.keep() {
+        Ok(path) => path,
+        Err(e) => e.path.to_path_buf(),
+    };
+    match removal {
+        Ok(()) => err,
+        Err(cleanup_err) if cleanup_err.kind() == io::ErrorKind::NotFound => err,
+        Err(cleanup_err) => err.with_context(format!(
+            "failed to remove tempfile {} after the error below ({}); remove it by hand",
+            tempfile_path.display(),
+            cleanup_err
+        )),
+    }
 }
 
 /// Wraps a failed read of a user-supplied path as a user error.
@@ -814,14 +870,41 @@ mod tests {
         );
     }
 
-    /// Pins the tempfile contract SPEC.md makes normative: the temporary
-    /// file is created in the output directory with the ".saltybox-" prefix
-    /// and owner-only permissions, and a failed rename reports the
-    /// tempfile's path so the user can clean it up. The rename is forced to
-    /// fail by making the output path an existing directory.
+    /// Pins the tempfile contract SPEC.md makes normative: the temporary file
+    /// is created in the output directory, named with the `.saltybox-` prefix
+    /// and `.tmp` suffix, and on Unix is owner-only from the start. A tempfile
+    /// left behind by a crash must be recognizable by name, and must not be
+    /// readable by other users while it holds plaintext.
     #[test]
-    #[cfg(unix)]
-    fn test_failed_rename_reports_private_tempfile() {
+    fn test_create_tempfile_is_private_and_named_per_spec() {
+        let temp_dir = TempDir::new().unwrap();
+        let temp_file = create_tempfile(temp_dir.path()).unwrap();
+        let path = temp_file.path();
+
+        assert_eq!(path.parent().unwrap(), temp_dir.path());
+        let name = path.file_name().unwrap().to_str().unwrap();
+        assert!(name.starts_with(".saltybox-"), "name: {name}");
+        assert!(name.ends_with(".tmp"), "name: {name}");
+        #[cfg(unix)]
+        {
+            let mode = fs::metadata(path).unwrap().permissions().mode();
+            assert_eq!(mode & 0o777, 0o600, "tempfile must be owner-only");
+        }
+    }
+
+    /// A failed rename onto the output path is a user error and leaves no
+    /// tempfile behind, even while the caller still holds the error.
+    ///
+    /// SPEC.md classifies failures on user-supplied paths as user errors and
+    /// promises that failures the command detects after creating the
+    /// tempfile remove it; for `decrypt` a leftover would be a stray
+    /// plaintext copy. The directory is inspected while `err` is alive on
+    /// purpose: removal must happen at the failure site, not whenever the
+    /// error's owner drops it. The rename is forced to fail by making the
+    /// output path an existing directory. The check compares the directory's
+    /// full contents so it does not depend on the tempfile naming scheme.
+    #[test]
+    fn test_failed_rename_removes_tempfile_and_is_user_error() {
         let temp_dir = TempDir::new().unwrap();
         let plain_path = temp_dir.path().join("plain.txt");
         let crypt_path = temp_dir.path().join("occupied");
@@ -833,34 +916,97 @@ mod tests {
         let err = encrypt_with_default_engine(&plain_path, &crypt_path, &mut reader)
             .expect_err("expected rename onto a directory to fail");
 
-        // The rename-failure message travels in the error source chain and
-        // must point at the leftover tempfile.
-        let mut chain_msg = None;
+        assert_eq!(err.category, ErrorCategory::User);
+        assert_eq!(err.kind, Some(ErrorKind::Io));
+        let mut chain = String::new();
         let mut source: Option<&(dyn std::error::Error + 'static)> = Some(&err);
         while let Some(e) = source {
-            let msg = e.to_string();
-            if msg.contains("tempfile may still exist at") {
-                chain_msg = Some(msg);
-                break;
-            }
+            chain.push_str(&e.to_string());
+            chain.push('\n');
             source = e.source();
         }
-        let msg = chain_msg.expect("expected rename failure to report the tempfile path");
-        let tempfile_path = msg
-            .split("tempfile may still exist at ")
-            .nth(1)
-            .and_then(|rest| rest.split(" and may need manual removal").next())
-            .expect("expected the message to embed the tempfile path");
+        assert!(
+            chain.contains("failed to rename to target file"),
+            "chain: {chain}"
+        );
+        let mut entries: Vec<_> = fs::read_dir(temp_dir.path())
+            .unwrap()
+            .map(|entry| entry.unwrap().file_name().into_string().unwrap())
+            .collect();
+        entries.sort();
+        assert_eq!(entries, ["occupied", "plain.txt"]);
+    }
 
-        let tempfile_path = std::path::Path::new(tempfile_path);
-        assert!(tempfile_path.exists(), "leftover tempfile should exist");
-        let name = tempfile_path.file_name().unwrap().to_str().unwrap();
-        assert!(name.starts_with(".saltybox-"), "name: {name}");
-        assert!(name.ends_with(".tmp"), "name: {name}");
-        assert_eq!(tempfile_path.parent().unwrap(), temp_dir.path());
+    /// When removing the tempfile after a failure itself fails, the error
+    /// names the leftover file so the user can remove it by hand.
+    ///
+    /// This is the only way a tempfile outlives an in-process failure, and
+    /// for `decrypt` it holds plaintext, so SPEC.md requires the path to be
+    /// reported rather than dropped. Removal is made to fail by taking write
+    /// permission away from the directory holding the tempfile. The original
+    /// failure must survive as the cause, keeping its category.
+    #[test]
+    #[cfg(unix)]
+    fn test_discard_tempfile_reports_failed_removal() {
+        let temp_dir = TempDir::new().unwrap();
+        let dir = temp_dir.path().join("locked");
+        fs::create_dir(&dir).unwrap();
+        let temp_file = NamedTempFile::new_in(&dir).unwrap();
+        let tempfile_path = temp_file.path().to_path_buf();
 
-        let mode = fs::metadata(tempfile_path).unwrap().permissions().mode();
-        assert_eq!(mode & 0o777, 0o600, "tempfile must be owner-only");
+        let original_permissions = fs::metadata(&dir).unwrap().permissions();
+        let mut locked_permissions = original_permissions.clone();
+        locked_permissions.set_mode(0o500);
+        fs::set_permissions(&dir, locked_permissions).unwrap();
+
+        // Root ignores directory permissions; skip rather than assert a
+        // failure that cannot happen (same pattern as the tests above).
+        let probe = dir.join("probe");
+        if fs::write(&probe, b"").is_ok() {
+            fs::remove_file(&probe).unwrap();
+            fs::set_permissions(&dir, original_permissions).unwrap();
+            eprintln!("skipping failed-removal assertion because this process can still write");
+            return;
+        }
+
+        let original = SaltyboxError::with_kind(
+            ErrorCategory::Internal,
+            ErrorKind::Io,
+            "failed to sync out.txt",
+        );
+        let err = discard_tempfile(temp_file, original);
+        fs::set_permissions(&dir, original_permissions).unwrap();
+
+        let msg = err.to_string();
+        assert!(
+            msg.contains(&tempfile_path.display().to_string()),
+            "msg: {msg}"
+        );
+        assert!(msg.contains("remove it by hand"), "msg: {msg}");
+        assert_eq!(err.category, ErrorCategory::Internal);
+        let cause = std::error::Error::source(&err).expect("original failure as cause");
+        assert_eq!(cause.to_string(), "failed to sync out.txt");
+        assert!(tempfile_path.exists(), "the file should still be there");
+    }
+
+    /// A tempfile that is already gone when cleanup runs counts as removed:
+    /// reporting a leftover that does not exist would send the user looking
+    /// for a plaintext copy that is not there.
+    #[test]
+    fn test_discard_tempfile_treats_missing_file_as_removed() {
+        let temp_dir = TempDir::new().unwrap();
+        let temp_file = NamedTempFile::new_in(temp_dir.path()).unwrap();
+        fs::remove_file(temp_file.path()).unwrap();
+
+        let original = SaltyboxError::with_kind(
+            ErrorCategory::Internal,
+            ErrorKind::Io,
+            "failed to write out.txt",
+        );
+        let err = discard_tempfile(temp_file, original);
+
+        assert_eq!(err.to_string(), "failed to write out.txt");
+        assert!(std::error::Error::source(&err).is_none());
     }
 
     /// An empty output path is rejected by name as a user error, with the

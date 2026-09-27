@@ -1060,3 +1060,46 @@ fn test_large_file_roundtrip() {
     let decrypted_content = fs::read(&decrypted).unwrap();
     assert_eq!(decrypted_content, large_content);
 }
+
+/// A decrypt whose final rename fails exits 1 and leaves no temporary file
+/// in the output directory.
+///
+/// For `decrypt` the temporary file holds the plaintext, so a leftover is a
+/// stray unencrypted copy of the secret. This is the end-to-end form of the
+/// unit test on the rename-failure path; it compares the directory's full
+/// contents so it does not depend on the tempfile naming scheme.
+#[test]
+fn test_decrypt_with_failed_rename_leaves_no_tempfile() {
+    let temp_dir = TempDir::new().unwrap();
+    let out_dir = temp_dir.path().join("out");
+    fs::create_dir(&out_dir).unwrap();
+    // The output path names an existing directory, so the rename fails
+    // after the plaintext has been written to the tempfile.
+    let blocked_output = out_dir.join("blocked");
+    fs::create_dir(&blocked_output).unwrap();
+
+    let input = testdata_path("hello.txt.salty");
+    let output = run_saltybox_with_passphrase(
+        &[
+            "decrypt",
+            "-i",
+            input.to_str().unwrap(),
+            "-o",
+            blocked_output.to_str().unwrap(),
+        ],
+        "test",
+    )
+    .expect("failed to run saltybox");
+
+    assert_eq!(output.status.code(), Some(1));
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(
+        stderr.contains("failed to rename to target file"),
+        "stderr: {stderr}"
+    );
+    let entries: Vec<_> = fs::read_dir(&out_dir)
+        .unwrap()
+        .map(|entry| entry.unwrap().file_name().into_string().unwrap())
+        .collect();
+    assert_eq!(entries, ["blocked"]);
+}

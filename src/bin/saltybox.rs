@@ -7,7 +7,7 @@
 use clap::{Parser, Subcommand};
 use std::error::Error as StdError;
 use std::path::PathBuf;
-use std::process;
+use std::process::ExitCode;
 
 use saltybox::file_ops;
 use saltybox::format;
@@ -66,7 +66,12 @@ enum Commands {
     },
 }
 
-fn main() {
+/// Runs one command and maps its outcome to the process exit status.
+///
+/// Failures are reported here and returned as `ExitCode::FAILURE` instead of
+/// calling `process::exit`, so destructors run normally and nothing relies on
+/// them being skipped.
+fn main() -> ExitCode {
     let cli = Cli::parse();
 
     let mut reader = get_passphrase_reader(cli.passphrase_stdin);
@@ -83,9 +88,12 @@ fn main() {
         }
     };
 
-    if let Err(e) = result {
-        report_error(&e);
-        process::exit(1);
+    match result {
+        Ok(()) => ExitCode::SUCCESS,
+        Err(e) => {
+            report_error(&e);
+            ExitCode::FAILURE
+        }
     }
 }
 

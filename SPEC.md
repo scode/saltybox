@@ -57,11 +57,13 @@ platforms): on success the output contains exactly the intended bytes, and no pa
 path under any circumstances. On any failure before the atomic rename, an existing file at the output path is left
 unchanged. (One narrow exception to "unchanged on failure": if making the rename durable fails after the rename itself
 succeeded, the output has already been replaced — with complete contents — while the command still exits nonzero.) A
-failed or interrupted write may leave the temporary file (on Unix with owner-only permissions; name prefixed
-`.saltybox-`) behind in the output directory; rename failures report its path. Failures before the temporary file is
-created (such as an unusable output directory) leave nothing behind and are reported without implying a write took
-place; a nonexistent output directory is reported as such, and an empty output path is rejected as such (like an empty
-passphrase, it almost always means an unset shell variable). On Unix the final output file mode is 0600.
+write interrupted by a crash or a signal (such as Ctrl-C) may leave the temporary file (on Unix with owner-only
+permissions; name prefixed `.saltybox-`) behind in the output directory. Any failure the command itself detects after
+creating the temporary file, including a failed rename, removes it; if that removal also fails, the error names the
+temporary file so it can be removed by hand. Failures before the temporary file is created (such as an unusable output
+directory) leave nothing behind and are reported without implying a write took place; a nonexistent output directory is
+reported as such, and an empty output path is rejected as such (like an empty passphrase, it almost always means an
+unset shell variable). On Unix the final output file mode is 0600.
 
 On Unix, the directory the output file is written in must be readable as well as writable. It is opened before the
 temporary file is created, so that the directory can be synced after the rename and the new directory entry survives a
