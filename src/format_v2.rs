@@ -225,7 +225,9 @@ fn validate_params(m_cost_kib: u32, t_cost: u32, p_cost: u32) -> Result<()> {
 /// Derive a 32-byte key with Argon2id v0x13.
 ///
 /// Callers must have run [`validate_params`] first; this function trusts its
-/// inputs and will happily allocate whatever memory the parameters demand.
+/// inputs and will happily allocate whatever memory the parameters demand. If
+/// that allocation fails, it returns a user error naming the memory required
+/// (see [`derivation_error`]).
 fn derive_key(
     passphrase: &[u8],
     salt: &[u8; SALT_LEN],
@@ -257,16 +259,34 @@ fn derive_key(
     let mut key = Zeroizing::new([0u8; KEY_LEN]);
     argon2
         .hash_password_into(passphrase, salt, &mut *key)
-        .map_err(|e| {
-            SaltyboxError::with_kind_and_source(
-                ErrorCategory::Internal,
-                ErrorKind::Argon2Failure,
-                "Argon2 key derivation failed",
-                e,
-            )
-        })?;
+        .map_err(|e| derivation_error(e, m_cost_kib))?;
 
     Ok(key)
+}
+
+/// Classifies a failed Argon2 key derivation.
+///
+/// Running out of memory is reported as a user error naming the memory the
+/// derivation asked for: the amount comes from the file's header (or the
+/// write default), and SPEC.md treats a machine that cannot supply it as the
+/// caller's environment, not a program defect. Every other failure is
+/// internal, since `validate_params` has already ruled out bad parameters.
+fn derivation_error(err: argon2::Error, m_cost_kib: u32) -> SaltyboxError {
+    if matches!(err, argon2::Error::OutOfMemory) {
+        SaltyboxError::with_kind_and_source(
+            ErrorCategory::User,
+            ErrorKind::KeyDerivationOutOfMemory,
+            format!("not enough memory for Argon2 key derivation ({m_cost_kib} KiB required)"),
+            err,
+        )
+    } else {
+        SaltyboxError::with_kind_and_source(
+            ErrorCategory::Internal,
+            ErrorKind::Argon2Failure,
+            "Argon2 key derivation failed",
+            err,
+        )
+    }
 }
 
 /// The AEAD associated data: armor magic followed by the full header.
@@ -486,6 +506,36 @@ mod tests {
         payload.extend_from_slice(&TEST_NONCE);
         payload.extend_from_slice(&[0u8; TAG_LEN]);
         payload
+    }
+
+    /// Running out of memory during key derivation is a user error that says
+    /// how much memory was needed, not a generic internal failure.
+    ///
+    /// argon2 reports a failed work-buffer allocation as an error instead of
+    /// aborting the process. A file's header decides how much memory is
+    /// needed, so a machine that cannot supply it is the caller's
+    /// environment (SPEC.md), and the message has to say what happened. The
+    /// error is constructed directly: making a real allocation fail is not
+    /// something a test can do reliably.
+    #[test]
+    fn test_derivation_out_of_memory_is_user_error() {
+        let err = derivation_error(argon2::Error::OutOfMemory, MAX_M_COST_KIB);
+        assert_eq!(err.category, ErrorCategory::User);
+        assert_eq!(err.kind, Some(ErrorKind::KeyDerivationOutOfMemory));
+        assert_eq!(
+            err.message(),
+            "not enough memory for Argon2 key derivation (4194304 KiB required)"
+        );
+    }
+
+    /// Any other Argon2 failure stays internal: parameters were validated
+    /// before derivation, so reaching one indicates a program defect.
+    #[test]
+    fn test_derivation_other_failure_is_internal() {
+        let err = derivation_error(argon2::Error::SaltTooShort, DEFAULT_M_COST_KIB);
+        assert_eq!(err.category, ErrorCategory::Internal);
+        assert_eq!(err.kind, Some(ErrorKind::Argon2Failure));
+        assert_eq!(err.message(), "Argon2 key derivation failed");
     }
 
     #[test]

@@ -217,10 +217,11 @@ implementation, stay readable; they are a format constant, and lowering them wou
 Users decrypting files from untrusted senders should expect that worst case, and readers must not tighten the ranges.
 
 If the machine cannot supply the memory key derivation needs (the header's m when decrypting or validating an update,
-256 MiB when encrypting), the user may get no error message at all: when that allocation fails, the process can be
-terminated outright, by an allocation abort or by the operating system's out-of-memory killer, before saltybox can
-report anything on standard error. The command still does not succeed, and since key derivation happens before any
-output is written, output files (including the existing file for `update`) are left unchanged.
+256 MiB when encrypting), the command fails with a user error saying how much memory was required. On systems that
+overcommit memory (Linux does by default), the allocation can appear to succeed and the operating system's out-of-memory
+killer can terminate the process later, while the memory is in use, before saltybox can report anything on standard
+error. Either way the command does not succeed, and since key derivation happens before any output is written, output
+files (including the existing file for `update`) are left unchanged.
 
 The AEAD associated data is the ASCII armor magic `saltybox2:` concatenated with the entire header (salt, m, t, p,
 nonce). A successful decrypt therefore proves the whole envelope — version identifier included — was untampered.
