@@ -1,9 +1,10 @@
 # SPEC.md compliance
 
-`SPEC.md` specifies user-visible behavior: the command-line interface and the on-disk file formats. Changes must comply
-with it. Any change that alters user-visible behavior must update `SPEC.md` in the same change. If the implementation
-and `SPEC.md` disagree, that is a bug: fix the implementation to match the spec — unless the task is intentionally
-changing behavior, in which case update `SPEC.md` to match as part of the change. Behavior `SPEC.md` does not cover is
+`SPEC.md` specifies user-visible behavior (the command-line interface and the on-disk file formats) and a few
+project-level rules, such as saltybox being a program rather than a library. Changes must comply with it. Any change
+that alters user-visible behavior must update `SPEC.md` in the same change. If the implementation and `SPEC.md`
+disagree, that is a bug: fix the implementation to match the spec — unless the task is intentionally changing behavior,
+in which case update `SPEC.md` to match as part of the change. Behavior `SPEC.md` does not cover is
 existing-but-unspecified; when a change touches such behavior, specify it (including its pre-existing behavior) in the
 same change.
 
