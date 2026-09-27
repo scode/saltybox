@@ -15,24 +15,38 @@ use zeroize::Zeroizing;
 const TEMPFILE_PREFIX: &str = ".saltybox-";
 const TEMPFILE_SUFFIX: &str = ".tmp";
 
-/// Reads the passphrase and rejects an empty one.
+/// Reads the passphrase and rejects one that is empty or contains a line
+/// break.
 ///
-/// Empty passphrases are refused for all operations. An empty passphrase
-/// provides no meaningful protection, and empty input is almost always an
-/// accident rather than intent — the canonical case is `--passphrase-stdin`
-/// fed by `echo -n "$PASS"` with `PASS` unset, which expands to zero bytes
-/// and would otherwise silently produce an effectively unprotected file.
+/// Both are refused for all operations, because both are almost always an
+/// accident when piping to `--passphrase-stdin` rather than intent. The
+/// canonical cases are `echo -n "$PASS"` with `PASS` unset, which sends zero
+/// bytes, and `echo "$PASS"` without `-n`, which appends a newline (and with
+/// `PASS` unset sends nothing else). Either would otherwise silently produce
+/// a file protected by nothing, or by a passphrase the user does not know
+/// they chose. A line break is `\n` or `\r`, so Windows-style `\r\n` endings
+/// are caught too. Line breaks are rejected anywhere, not just at the end:
+/// piped input is meant to be a single-line passphrase, and feeding arbitrary
+/// bytes is left to a possible future option that reads the passphrase from
+/// a file.
 ///
-/// The check lives here at the operation layer, not in the individual
-/// [`PassphraseReader`] implementations, so it holds regardless of how the
+/// The checks live here at the operation layer, not in the individual
+/// [`PassphraseReader`] implementations, so they hold regardless of how the
 /// passphrase was obtained.
-fn read_nonempty_passphrase(reader: &mut dyn PassphraseReader) -> Result<Zeroizing<Vec<u8>>> {
+fn read_valid_passphrase(reader: &mut dyn PassphraseReader) -> Result<Zeroizing<Vec<u8>>> {
     let passphrase = reader.read_passphrase()?;
     if passphrase.is_empty() {
         return Err(SaltyboxError::with_kind(
             ErrorCategory::User,
             ErrorKind::EmptyPassphrase,
             "empty passphrase is not allowed (note that an unset shell variable expands to empty)",
+        ));
+    }
+    if passphrase.iter().any(|b| matches!(b, b'\n' | b'\r')) {
+        return Err(SaltyboxError::with_kind(
+            ErrorCategory::User,
+            ErrorKind::PassphraseContainsLineBreak,
+            "passphrase containing a line break is not allowed (when piping to --passphrase-stdin, use `echo -n` or `printf '%s' \"$PASS\"`)",
         ));
     }
     Ok(passphrase)
@@ -58,7 +72,7 @@ pub fn encrypt_file(
 ) -> Result<()> {
     check_output_path(output_path)?;
     let plaintext = Zeroizing::new(fs::read(input_path).map_err(|e| read_error(input_path, e))?);
-    let passphrase = read_nonempty_passphrase(passphrase_reader)?;
+    let passphrase = read_valid_passphrase(passphrase_reader)?;
     let armored = write_engine
         .encrypt(&passphrase, &plaintext)
         .map_err(|e| e.with_context("encryption failed"))?;
@@ -90,7 +104,7 @@ pub fn decrypt_file(
             e,
         )
     })?;
-    let passphrase = read_nonempty_passphrase(passphrase_reader)?;
+    let passphrase = read_valid_passphrase(passphrase_reader)?;
     let (engine, ciphertext) =
         format::decode(&armored).map_err(|e| e.with_context("failed to unarmor"))?;
     let plaintext = engine
@@ -143,7 +157,7 @@ pub fn update_file(
             e,
         )
     })?;
-    let passphrase = read_nonempty_passphrase(passphrase_reader)?;
+    let passphrase = read_valid_passphrase(passphrase_reader)?;
 
     // Validate passphrase by decrypting existing file (discard plaintext)
     let (engine, ciphertext) =
@@ -1659,40 +1673,60 @@ mod tests {
         assert_eq!(fs::read(&crypt_path).unwrap(), before);
     }
 
-    /// Empty passphrases are rejected by every operation, including decrypt:
-    /// SPEC.md makes files encrypted with an empty passphrase (possible in
-    /// older versions) deliberately undecryptable.
+    /// Empty passphrases and passphrases containing a line break are
+    /// rejected by every operation, including decrypt and update.
+    ///
+    /// Both are almost always a piping mistake (`echo -n "$PASS"` or
+    /// `echo "$PASS"` with `PASS` unset). SPEC.md rejects them for every
+    /// command, which deliberately makes files encrypted with such a
+    /// passphrase by older versions undecryptable. `\r` is included so
+    /// Windows-style line endings are caught, and line breaks are rejected
+    /// wherever they appear, not just at the end.
     #[test]
-    fn test_empty_passphrase_is_rejected_by_all_operations() {
+    fn test_invalid_passphrases_are_rejected_by_all_operations() {
         let temp_dir = TempDir::new().unwrap();
         let plain_path = temp_dir.path().join("plain.txt");
         let crypt_path = temp_dir.path().join("crypt.txt.saltybox");
         let decrypted_path = temp_dir.path().join("decrypted.txt");
-
         fs::write(&plain_path, b"secret").unwrap();
 
-        let mut reader = ConstantPassphraseReader::new(b"".to_vec());
-        let err = encrypt_with_default_engine(&plain_path, &crypt_path, &mut reader)
-            .expect_err("expected empty passphrase rejection on encrypt");
-        assert_eq!(err.category, ErrorCategory::User);
-        assert_eq!(err.kind, Some(ErrorKind::EmptyPassphrase));
-        assert!(!crypt_path.exists());
+        let cases: &[(&[u8], ErrorKind)] = &[
+            (b"", ErrorKind::EmptyPassphrase),
+            (b"\n", ErrorKind::PassphraseContainsLineBreak),
+            (b"pw\n", ErrorKind::PassphraseContainsLineBreak),
+            (b"pw\r\n", ErrorKind::PassphraseContainsLineBreak),
+            (b"pw\r", ErrorKind::PassphraseContainsLineBreak),
+            (b"p\nw", ErrorKind::PassphraseContainsLineBreak),
+        ];
+        for &(passphrase, kind) in cases {
+            let mut reader = ConstantPassphraseReader::new(passphrase.to_vec());
+            let err = encrypt_with_default_engine(&plain_path, &crypt_path, &mut reader)
+                .expect_err("expected rejection on encrypt");
+            assert_eq!(err.category, ErrorCategory::User);
+            assert_eq!(err.kind, Some(kind), "encrypt, passphrase {passphrase:?}");
+            assert!(!crypt_path.exists());
+        }
 
-        // Set up a real encrypted file so decrypt/update fail on the
-        // passphrase check, not on a missing input.
+        // A real encrypted file, so decrypt and update fail on the
+        // passphrase check rather than on a missing input.
         let mut reader = ConstantPassphraseReader::new(b"real passphrase".to_vec());
         encrypt_with_default_engine(&plain_path, &crypt_path, &mut reader).unwrap();
+        let existing = fs::read(&crypt_path).unwrap();
+        for &(passphrase, kind) in cases {
+            let mut reader = ConstantPassphraseReader::new(passphrase.to_vec());
+            let err = decrypt_file(&crypt_path, &decrypted_path, &mut reader)
+                .expect_err("expected rejection on decrypt");
+            assert_eq!(err.category, ErrorCategory::User);
+            assert_eq!(err.kind, Some(kind), "decrypt, passphrase {passphrase:?}");
+            assert!(!decrypted_path.exists());
 
-        let mut reader = ConstantPassphraseReader::new(b"".to_vec());
-        let err = decrypt_file(&crypt_path, &decrypted_path, &mut reader)
-            .expect_err("expected empty passphrase rejection on decrypt");
-        assert_eq!(err.kind, Some(ErrorKind::EmptyPassphrase));
-        assert!(!decrypted_path.exists());
-
-        let mut reader = ConstantPassphraseReader::new(b"".to_vec());
-        let err = update_with_default_engine(&plain_path, &crypt_path, &mut reader)
-            .expect_err("expected empty passphrase rejection on update");
-        assert_eq!(err.kind, Some(ErrorKind::EmptyPassphrase));
+            let mut reader = ConstantPassphraseReader::new(passphrase.to_vec());
+            let err = update_with_default_engine(&plain_path, &crypt_path, &mut reader)
+                .expect_err("expected rejection on update");
+            assert_eq!(err.category, ErrorCategory::User);
+            assert_eq!(err.kind, Some(kind), "update, passphrase {passphrase:?}");
+            assert_eq!(fs::read(&crypt_path).unwrap(), existing);
+        }
     }
 
     #[test]

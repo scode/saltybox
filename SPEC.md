@@ -36,16 +36,22 @@ directory grants.
 ## Commands
 
 All commands take a passphrase: interactively from the terminal with echo disabled, or — when the global
-`--passphrase-stdin` option is given — from standard input, read to end-of-input and used exactly as provided (trailing
-newlines are NOT stripped, and the passphrase need not be valid UTF-8). A failure to read standard input under
-`--passphrase-stdin` (a broken pipe, an unreadable redirect) is a user error reported as a passphrase read failure with
-the underlying cause, not an internal failure. Without `--passphrase-stdin`, commands fail when standard input is not a
-terminal rather than attempting to read a passphrase. An empty passphrase is an error for every command, regardless of
-how the passphrase was provided: it offers no meaningful protection, and empty input almost always means a mistake (an
-unset shell variable expands to empty) rather than intent. NOTE: this makes files encrypted with an empty passphrase by
-older versions undecryptable by these commands. On any failure, commands exit with a nonzero status and report the error
-on standard error. The one exception is a process killed for lack of memory during key derivation, which the saltybox2
-section describes.
+`--passphrase-stdin` option is given — from standard input, read to end-of-input and used exactly as provided (nothing
+is stripped, and the passphrase need not be valid UTF-8). A failure to read standard input under `--passphrase-stdin` (a
+broken pipe, an unreadable redirect) is a user error reported as a passphrase read failure with the underlying cause,
+not an internal failure. Without `--passphrase-stdin`, commands fail when standard input is not a terminal rather than
+attempting to read a passphrase.
+
+An empty passphrase is an error for every command, regardless of how the passphrase was provided: it offers no
+meaningful protection, and empty input almost always means a mistake (an unset shell variable expands to empty) rather
+than intent. NOTE: this makes files encrypted with an empty passphrase by older versions undecryptable by these
+commands. A passphrase containing a line break (a `\n` or `\r` byte) anywhere is likewise an error for every command:
+`echo "$PASS"` without `-n` appends a newline the user never meant to choose, and with `PASS` unset the passphrase is
+that newline alone. Pipe the passphrase without one (`echo -n`, `printf '%s' "$PASS"`). NOTE: this makes files encrypted
+by older versions with a passphrase containing a line break undecryptable by these commands.
+
+On any failure, commands exit with a nonzero status and report the error on standard error. The one exception is a
+process killed for lack of memory during key derivation, which the saltybox2 section describes.
 
 Any I/O failure on a path the user supplied (an input file, the output file, or the output file's directory) is a user
 error: a missing file, a directory given where a file was expected, a permission denial, or an unwritable output
