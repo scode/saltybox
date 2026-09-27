@@ -1,6 +1,6 @@
 [package]
 name = "saltybox"
-version = "5.0.1"
+version = "6.0.0"
 authors = ["saltybox contributors"]
 default-run = "saltybox"
 edition = "2024"
