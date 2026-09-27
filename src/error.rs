@@ -49,6 +49,10 @@ pub enum ErrorKind {
     /// `--passphrase-stdin`, and with the variable unset it is the entire
     /// passphrase.
     PassphraseContainsLineBreak,
+    /// The two entries of an interactively confirmed passphrase differed.
+    /// Raised only by `encrypt` reading from the terminal, where the prompt
+    /// has echo disabled and the passphrase is therefore entered twice.
+    PassphraseConfirmationMismatch,
     /// Low-level scrypt key derivation failed.
     ScryptFailure,
     /// Low-level Argon2 key derivation failed.

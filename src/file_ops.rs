@@ -56,6 +56,9 @@ fn read_valid_passphrase(reader: &mut dyn PassphraseReader) -> Result<Zeroizing<
 ///
 /// Reads plaintext from `input_path`, encrypts it using a passphrase from
 /// `passphrase_reader`, and writes the armored ciphertext to `output_path`.
+/// If the reader offers a confirmation (see
+/// [`PassphraseReader::read_confirmation`]), a confirmation that differs from
+/// the passphrase fails the call as a user error before anything is written.
 ///
 /// Which format is written is the caller's choice via `write_engine`; the
 /// CLI always passes [`format::default_write_engine`].
@@ -73,6 +76,18 @@ pub fn encrypt_file(
     check_output_path(output_path)?;
     let plaintext = Zeroizing::new(fs::read(input_path).map_err(|e| read_error(input_path, e))?);
     let passphrase = read_valid_passphrase(passphrase_reader)?;
+    // A new file has nothing to check the passphrase against, so an
+    // interactive entry is confirmed by typing it twice. See
+    // `PassphraseReader::read_confirmation` for which sources confirm.
+    if let Some(confirmation) = passphrase_reader.read_confirmation()? {
+        if confirmation != passphrase {
+            return Err(SaltyboxError::with_kind(
+                ErrorCategory::User,
+                ErrorKind::PassphraseConfirmationMismatch,
+                "passphrase entries do not match; nothing was written",
+            ));
+        }
+    }
     let armored = write_engine
         .encrypt(&passphrase, &plaintext)
         .map_err(|e| e.with_context("encryption failed"))?;
@@ -524,7 +539,7 @@ mod tests {
     use super::*;
     use crate::error::{ErrorCategory, ErrorKind};
     use crate::format_v2::V2Engine;
-    use crate::passphrase::ConstantPassphraseReader;
+    use crate::passphrase::{ConfirmingPassphraseReader, ConstantPassphraseReader};
     use std::fs;
     use tempfile::TempDir;
 
@@ -1727,6 +1742,82 @@ mod tests {
             assert_eq!(err.kind, Some(kind), "update, passphrase {passphrase:?}");
             assert_eq!(fs::read(&crypt_path).unwrap(), existing);
         }
+    }
+
+    /// An interactively confirmed passphrase whose two entries differ makes
+    /// `encrypt` fail as a user error and write nothing.
+    ///
+    /// The terminal prompt reads with echo disabled, so without the second
+    /// entry a typo would silently become the passphrase of a file nobody can
+    /// decrypt, found out only when decryption fails. SPEC.md requires the
+    /// confirmation for interactive `encrypt`.
+    #[test]
+    fn test_encrypt_rejects_mismatched_confirmation() {
+        let temp_dir = TempDir::new().unwrap();
+        let plain_path = temp_dir.path().join("plain.txt");
+        let crypt_path = temp_dir.path().join("crypt.txt.saltybox");
+        fs::write(&plain_path, b"secret").unwrap();
+
+        let mut reader =
+            ConfirmingPassphraseReader::new(b"correct horse".to_vec(), b"correct hose".to_vec());
+        let err = encrypt_with_default_engine(&plain_path, &crypt_path, &mut reader)
+            .expect_err("expected mismatched confirmation to fail");
+
+        assert_eq!(err.category, ErrorCategory::User);
+        assert_eq!(err.kind, Some(ErrorKind::PassphraseConfirmationMismatch));
+        assert_eq!(
+            err.message(),
+            "passphrase entries do not match; nothing was written"
+        );
+        assert!(!crypt_path.exists());
+    }
+
+    /// A matching confirmation lets `encrypt` proceed, and the file decrypts
+    /// with that passphrase. This guards against the confirmation step
+    /// rejecting, or altering, a correctly repeated passphrase.
+    #[test]
+    fn test_encrypt_accepts_matching_confirmation() {
+        let temp_dir = TempDir::new().unwrap();
+        let plain_path = temp_dir.path().join("plain.txt");
+        let crypt_path = temp_dir.path().join("crypt.txt.saltybox");
+        let decrypted_path = temp_dir.path().join("decrypted.txt");
+        fs::write(&plain_path, b"secret").unwrap();
+
+        let mut reader =
+            ConfirmingPassphraseReader::new(b"correct horse".to_vec(), b"correct horse".to_vec());
+        encrypt_with_default_engine(&plain_path, &crypt_path, &mut reader).unwrap();
+
+        let mut reader = ConstantPassphraseReader::new(b"correct horse".to_vec());
+        decrypt_file(&crypt_path, &decrypted_path, &mut reader).unwrap();
+        assert_eq!(fs::read(&decrypted_path).unwrap(), b"secret");
+    }
+
+    /// `decrypt` and `update` never ask for a confirmation: the existing file
+    /// already confirms the passphrase there, and SPEC.md rules out a second
+    /// prompt. The reader panics if asked, so a regression that asked (which
+    /// interactively means a surprise second prompt) fails the test.
+    #[test]
+    fn test_decrypt_and_update_do_not_confirm() {
+        struct NoConfirmReader;
+        impl PassphraseReader for NoConfirmReader {
+            fn read_passphrase(&mut self) -> Result<Zeroizing<Vec<u8>>> {
+                Ok(Zeroizing::new(b"pw".to_vec()))
+            }
+            fn read_confirmation(&mut self) -> Result<Option<Zeroizing<Vec<u8>>>> {
+                panic!("decrypt and update must not ask for a confirmation");
+            }
+        }
+
+        let temp_dir = TempDir::new().unwrap();
+        let plain_path = temp_dir.path().join("plain.txt");
+        let crypt_path = temp_dir.path().join("crypt.txt.saltybox");
+        let decrypted_path = temp_dir.path().join("decrypted.txt");
+        fs::write(&plain_path, b"secret").unwrap();
+        let mut reader = ConstantPassphraseReader::new(b"pw".to_vec());
+        encrypt_with_default_engine(&plain_path, &crypt_path, &mut reader).unwrap();
+
+        decrypt_file(&crypt_path, &decrypted_path, &mut NoConfirmReader).unwrap();
+        update_with_default_engine(&plain_path, &crypt_path, &mut NoConfirmReader).unwrap();
     }
 
     #[test]

@@ -92,6 +92,11 @@ writes one armored saltybox unit to `<output>` in the saltybox2 format, with Arg
 The output format never depends on any existing file. Salt and nonce are freshly generated at random for every
 encryption, so encrypting the same input twice produces different output.
 
+When the passphrase is read interactively from the terminal, `encrypt` asks for it twice and fails with a user error,
+writing nothing, if the two entries differ. The prompt has echo disabled, so a typo would otherwise become the
+passphrase of a file nobody can decrypt. There is no second entry with `--passphrase-stdin`, and none for `decrypt` or
+`update`, where the existing file already confirms the passphrase.
+
 saltybox1 output cannot be produced: that format is decrypt-only. Consequently, files written by this version cannot be
 read by saltybox versions that predate saltybox2 support.
 

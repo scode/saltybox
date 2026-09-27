@@ -34,7 +34,7 @@ If you decide to use saltybox for anything important, please review [guidance fo
 
 # Usage
 
-Here's how to encrypt a file (you will be interactively prompted for a passphrase):
+Here's how to encrypt a file (you will be interactively prompted for a passphrase, twice to catch typos):
 
 ```
 saltybox encrypt -i allmysecrets.txt -o allmysecrets.txt.saltybox

@@ -16,6 +16,22 @@ pub trait PassphraseReader {
     /// third-party library internals, kernel tty and pipe buffers. Each
     /// implementation documents what its wipe does and does not cover.
     fn read_passphrase(&mut self) -> Result<Zeroizing<Vec<u8>>>;
+
+    /// Reads the passphrase a second time so the caller can check that the
+    /// user typed what they meant, or returns `None` when this source has no
+    /// meaningful confirmation.
+    ///
+    /// Only sources where the user cannot see what they typed need this: the
+    /// interactive terminal prompt reads with echo disabled, so a typo there
+    /// goes unnoticed until decryption fails, possibly years later. The
+    /// default is `None`, which is right for piped input (whoever pipes the
+    /// passphrase in already supplies the exact bytes, and stdin read to
+    /// end-of-input has no second copy to read). Callers
+    /// decide when to ask; `encrypt` does, `decrypt` and `update` do not,
+    /// because an existing file already confirms the passphrase there.
+    fn read_confirmation(&mut self) -> Result<Option<Zeroizing<Vec<u8>>>> {
+        Ok(None)
+    }
 }
 
 /// Returns a fixed passphrase (for testing)
@@ -37,6 +53,35 @@ impl ConstantPassphraseReader {
 impl PassphraseReader for ConstantPassphraseReader {
     fn read_passphrase(&mut self) -> Result<Zeroizing<Vec<u8>>> {
         Ok(self.passphrase.clone())
+    }
+}
+
+/// Returns a fixed passphrase and a fixed confirmation (for testing), standing
+/// in for the interactive prompt without needing a terminal.
+#[cfg(test)]
+pub struct ConfirmingPassphraseReader {
+    passphrase: Zeroizing<Vec<u8>>,
+    confirmation: Zeroizing<Vec<u8>>,
+}
+
+#[cfg(test)]
+impl ConfirmingPassphraseReader {
+    pub fn new(passphrase: Vec<u8>, confirmation: Vec<u8>) -> Self {
+        Self {
+            passphrase: Zeroizing::new(passphrase),
+            confirmation: Zeroizing::new(confirmation),
+        }
+    }
+}
+
+#[cfg(test)]
+impl PassphraseReader for ConfirmingPassphraseReader {
+    fn read_passphrase(&mut self) -> Result<Zeroizing<Vec<u8>>> {
+        Ok(self.passphrase.clone())
+    }
+
+    fn read_confirmation(&mut self) -> Result<Option<Zeroizing<Vec<u8>>>> {
+        Ok(Some(self.confirmation.clone()))
     }
 }
 
@@ -107,49 +152,63 @@ impl PassphraseReader for TerminalPassphraseReader {
     /// Note: Terminal input is limited to UTF-8 due to rpassword library constraints.
     /// For non-UTF-8 passphrases, use --passphrase-stdin instead.
     fn read_passphrase(&mut self) -> Result<Zeroizing<Vec<u8>>> {
-        if !io::stdin().is_terminal() {
-            return Err(SaltyboxError::with_kind(
-                ErrorCategory::User,
-                ErrorKind::PassphraseUnavailable,
-                "cannot read passphrase from terminal - stdin is not a terminal",
-            ));
-        }
-
-        io::stderr()
-            .write_all(b"Passphrase (saltybox): ")
-            .map_err(|e| {
-                SaltyboxError::with_kind_and_source(
-                    ErrorCategory::Internal,
-                    ErrorKind::Io,
-                    "failed to write prompt",
-                    e,
-                )
-            })?;
-        io::stderr().flush().map_err(|e| {
-            SaltyboxError::with_kind_and_source(
-                ErrorCategory::Internal,
-                ErrorKind::Io,
-                "failed to flush prompt",
-                e,
-            )
-        })?;
-
-        // Read without echo. rpassword returns a plain String; the
-        // into_bytes below hands its buffer to Zeroizing without copying, so
-        // the final buffer does get wiped — but any intermediate buffers
-        // rpassword used while assembling the line are its own, and we
-        // cannot wipe those.
-        let passphrase = rpassword::read_password().map_err(|e| {
-            SaltyboxError::with_kind_and_source(
-                ErrorCategory::Internal,
-                ErrorKind::PassphraseUnavailable,
-                "failure reading passphrase",
-                e,
-            )
-        })?;
-
-        Ok(Zeroizing::new(passphrase.into_bytes()))
+        prompt_without_echo(b"Passphrase (saltybox): ")
     }
+
+    /// Prompts again, also with echo disabled, so a typo in the first entry
+    /// is caught instead of silently becoming the passphrase.
+    fn read_confirmation(&mut self) -> Result<Option<Zeroizing<Vec<u8>>>> {
+        prompt_without_echo(b"Passphrase again (saltybox): ").map(Some)
+    }
+}
+
+/// Writes `prompt` to stderr and reads one line from the terminal with echo
+/// disabled.
+///
+/// Refuses to run unless stdin is a terminal: SPEC.md says commands fail
+/// rather than attempt to read a passphrase from non-terminal stdin without
+/// `--passphrase-stdin`.
+fn prompt_without_echo(prompt: &[u8]) -> Result<Zeroizing<Vec<u8>>> {
+    if !io::stdin().is_terminal() {
+        return Err(SaltyboxError::with_kind(
+            ErrorCategory::User,
+            ErrorKind::PassphraseUnavailable,
+            "cannot read passphrase from terminal - stdin is not a terminal",
+        ));
+    }
+
+    io::stderr().write_all(prompt).map_err(|e| {
+        SaltyboxError::with_kind_and_source(
+            ErrorCategory::Internal,
+            ErrorKind::Io,
+            "failed to write prompt",
+            e,
+        )
+    })?;
+    io::stderr().flush().map_err(|e| {
+        SaltyboxError::with_kind_and_source(
+            ErrorCategory::Internal,
+            ErrorKind::Io,
+            "failed to flush prompt",
+            e,
+        )
+    })?;
+
+    // Read without echo. rpassword returns a plain String; the
+    // into_bytes below hands its buffer to Zeroizing without copying, so
+    // the final buffer does get wiped — but any intermediate buffers
+    // rpassword used while assembling the line are its own, and we
+    // cannot wipe those.
+    let passphrase = rpassword::read_password().map_err(|e| {
+        SaltyboxError::with_kind_and_source(
+            ErrorCategory::Internal,
+            ErrorKind::PassphraseUnavailable,
+            "failure reading passphrase",
+            e,
+        )
+    })?;
+
+    Ok(Zeroizing::new(passphrase.into_bytes()))
 }
 
 #[cfg(test)]
@@ -168,6 +227,12 @@ mod tests {
         let passphrase = reader.read_passphrase().unwrap();
         println!("You entered: {}", String::from_utf8_lossy(&passphrase));
         assert!(!passphrase.is_empty(), "Expected non-empty passphrase");
+        println!("\nPlease enter the same passphrase again:");
+        let confirmation = reader.read_confirmation().unwrap();
+        assert_eq!(
+            &**confirmation.expect("expected a confirmation"),
+            &*passphrase
+        );
     }
 
     #[test]
