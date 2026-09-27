@@ -43,6 +43,12 @@ pub enum ErrorKind {
     /// operations: they provide no meaningful protection, and empty input is
     /// almost always an accident (an unset shell variable expands to empty).
     EmptyPassphrase,
+    /// The passphrase contained a line break (`\n` or `\r`). Rejected for
+    /// all operations: a line break in a passphrase is almost always a
+    /// newline that `echo` (without `-n`) added when piping it to
+    /// `--passphrase-stdin`, and with the variable unset it is the entire
+    /// passphrase.
+    PassphraseContainsLineBreak,
     /// Low-level scrypt key derivation failed.
     ScryptFailure,
     /// Low-level Argon2 key derivation failed.

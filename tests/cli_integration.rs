@@ -554,57 +554,6 @@ fn test_non_utf8_passphrase_roundtrips() {
     );
 }
 
-#[test]
-fn test_passphrase_stdin_preserves_trailing_newline() {
-    let temp_dir = TempDir::new().unwrap();
-    let plaintext = temp_dir.path().join("plaintext.txt");
-    let encrypted = temp_dir.path().join("encrypted.txt.salty");
-    let decrypted = temp_dir.path().join("decrypted.txt");
-
-    fs::write(&plaintext, "newline-sensitive passphrase").unwrap();
-
-    let result = run_saltybox_with_passphrase(
-        &[
-            "encrypt",
-            "-i",
-            plaintext.to_str().unwrap(),
-            "-o",
-            encrypted.to_str().unwrap(),
-        ],
-        "test\n",
-    )
-    .unwrap();
-    assert!(
-        result.status.success(),
-        "encrypt failed: {}",
-        String::from_utf8_lossy(&result.stderr)
-    );
-
-    let decrypt_args = [
-        "decrypt",
-        "-i",
-        encrypted.to_str().unwrap(),
-        "-o",
-        decrypted.to_str().unwrap(),
-    ];
-
-    let result = run_saltybox_with_passphrase(&decrypt_args, "test").unwrap();
-    assert!(!result.status.success());
-    assert!(!decrypted.exists());
-
-    let result = run_saltybox_with_passphrase(&decrypt_args, "test\n").unwrap();
-    assert!(
-        result.status.success(),
-        "decrypt failed: {}",
-        String::from_utf8_lossy(&result.stderr)
-    );
-
-    assert_eq!(
-        fs::read_to_string(&decrypted).unwrap(),
-        "newline-sensitive passphrase"
-    );
-}
-
 /// Pins SPEC.md's promise that without --passphrase-stdin, commands fail
 /// when standard input is not a terminal instead of attempting to read a
 /// passphrase. That interactive-prompt path is the default for every human
@@ -693,6 +642,46 @@ fn test_rejects_empty_passphrase() {
         "unexpected stderr: {stderr}"
     );
     assert!(!encrypted.exists());
+}
+
+/// A passphrase piped with a trailing newline (`echo` without `-n`) is
+/// rejected with a message pointing at `echo -n`, and nothing is written.
+///
+/// SPEC.md used to preserve trailing newlines as part of the passphrase,
+/// which let `echo "$PASS" | saltybox --passphrase-stdin ...` quietly encrypt
+/// with a passphrase ending in a newline, or, with `PASS` unset, with a
+/// passphrase that was a single newline. It now rejects any line break.
+/// This pins the end-to-end behavior, including the hint, for both `\n` and
+/// Windows-style `\r\n`.
+#[test]
+fn test_rejects_passphrase_with_line_break() {
+    let temp_dir = TempDir::new().unwrap();
+    let plaintext = temp_dir.path().join("plaintext.txt");
+    let encrypted = temp_dir.path().join("encrypted.txt.salty");
+    fs::write(&plaintext, "secret").unwrap();
+
+    for passphrase in ["\n", "test\n", "test\r\n"] {
+        let result = run_saltybox_with_passphrase(
+            &[
+                "encrypt",
+                "-i",
+                plaintext.to_str().unwrap(),
+                "-o",
+                encrypted.to_str().unwrap(),
+            ],
+            passphrase,
+        )
+        .unwrap();
+
+        assert!(!result.status.success(), "passphrase {passphrase:?}");
+        let stderr = String::from_utf8_lossy(&result.stderr);
+        assert!(
+            stderr.contains("passphrase containing a line break is not allowed")
+                && stderr.contains("echo -n"),
+            "unexpected stderr: {stderr}"
+        );
+        assert!(!encrypted.exists());
+    }
 }
 
 #[test]

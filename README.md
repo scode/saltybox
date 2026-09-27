@@ -96,8 +96,10 @@ external projects/people aside from the Rust language tools themselves remaining
 
 # Format/API contract
 
-- Future versions if any will remain able to decrypt data encrypted by older versions, with one exception: empty
-  passphrases are rejected, so files encrypted with an empty passphrase by older versions can no longer be decrypted.
+- Future versions if any will remain able to decrypt data encrypted by older versions, with two exceptions: empty
+  passphrases are rejected, and so are passphrases containing a line break (`\n` or `\r`), so files encrypted with such
+  a passphrase by older versions can no longer be decrypted. A line break usually comes from piping the passphrase with
+  `echo` without `-n`.
 - The reverse does not hold: newly written files use the saltybox2 format, which saltybox versions before 4.0 cannot
   read. Running `update` on an old file also rewrites it as saltybox2 (this is the intended way to migrate old files).
 - The command line interface may change at any time. It is currently not intended for automated scripting (for this

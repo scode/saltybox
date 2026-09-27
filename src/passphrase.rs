@@ -65,6 +65,11 @@ impl ReaderPassphraseReader {
 impl PassphraseReader for ReaderPassphraseReader {
     /// Reads all bytes until end-of-input.
     ///
+    /// Bytes are returned unmodified, including any trailing newline:
+    /// `file_ops` rejects passphrases containing a line break, and stripping
+    /// one here would hide the `echo`-without-`-n` mistake that check exists
+    /// to catch.
+    ///
     /// For input smaller than `PASSPHRASE_BUFFER_CAPACITY`, this
     /// implementation makes no unwiped copy of its own: `read_to_end` reads
     /// directly into the pre-reserved spare capacity without reallocating.
@@ -175,12 +180,29 @@ mod tests {
     /// Readers pass an empty passphrase through unmodified: rejecting empty
     /// passphrases is the operation layer's job (see `file_ops`), so it holds
     /// for every reader implementation rather than being re-enforced (or
-    /// forgotten) per source.
+    /// forgotten) per source. The same applies to line breaks from
+    /// `ReaderPassphraseReader` (the terminal reader ends input at the first
+    /// line break and never returns one); see
+    /// `test_reader_passphrase_reader_preserves_line_breaks`.
     #[test]
     fn test_reader_passphrase_reader_empty() {
         let data = b"";
         let mut reader = ReaderPassphraseReader::new(Box::new(&data[..]));
         assert_eq!(&*reader.read_passphrase().unwrap(), b"");
+    }
+
+    /// The stdin reader passes line breaks through unmodified.
+    ///
+    /// The operation layer rejects passphrases containing a line break, and
+    /// that only works if it sees them: a reader that stripped a trailing
+    /// newline would silently turn `echo "$PASS"` without `-n` back into an
+    /// accepted passphrase, which is exactly the mistake the rejection exists
+    /// to catch.
+    #[test]
+    fn test_reader_passphrase_reader_preserves_line_breaks() {
+        let data = b"pw\r\n";
+        let mut reader = ReaderPassphraseReader::new(Box::new(&data[..]));
+        assert_eq!(&*reader.read_passphrase().unwrap(), b"pw\r\n");
     }
 
     /// A read failure on the passphrase source is a user error naming the
