@@ -1,12 +1,20 @@
 # saltybox specification
 
-This document specifies saltybox's user-visible behavior: the command-line interface and the on-disk file formats. It is
-a specification of behavior — what users and other implementations can rely on — not documentation of the
-implementation. Implementation details do not belong here.
+This document specifies saltybox's user-visible behavior (the command-line interface and the on-disk file formats) and
+the few project-level rules that constrain what saltybox is (see Project scope). It is a specification of what users and
+other implementations can rely on, not documentation of the implementation. Implementation details do not belong here.
 
 NOTE: Coverage is deliberately incremental. Behavior not described here is existing-but-unspecified, not nonexistent.
 When a change touches user-visible behavior, the touched area must be specified — including its pre-existing behavior —
 in the same change. `AGENTS.md` states the compliance rule.
+
+## Project scope
+
+saltybox is a program, not a library. Its contracts are the command-line interface and the on-disk file formats this
+document describes, and nothing else. The Rust crate happens to be split into a library and a binary, but that split is
+an implementation convenience: the library's public items exist only to serve the `saltybox` binary and make no
+affordances for external consumers. Behavior that is reachable only by calling the library directly, and not through the
+command line, is not part of any contract.
 
 ## Supported platforms
 
@@ -26,7 +34,8 @@ terminal rather than attempting to read a passphrase. An empty passphrase is an 
 how the passphrase was provided: it offers no meaningful protection, and empty input almost always means a mistake (an
 unset shell variable expands to empty) rather than intent. NOTE: this makes files encrypted with an empty passphrase by
 older versions undecryptable by these commands. On any failure, commands exit with a nonzero status and report the error
-on standard error.
+on standard error. The one exception is a process killed for lack of memory during key derivation, which the saltybox2
+section describes.
 
 Any I/O failure on a path the user supplied (an input file, the output file, or the output file's directory) is a user
 error: a missing file, a directory given where a file was expected, a permission denial, or an unwritable output
@@ -43,6 +52,11 @@ failed or interrupted write may leave the temporary file (on Unix with owner-onl
 created (such as an unusable output directory) leave nothing behind and are reported without implying a write took
 place; a nonexistent output directory is reported as such, and an empty output path is rejected as such (like an empty
 passphrase, it almost always means an unset shell variable). On Unix the final output file mode is 0600.
+
+On Unix, the directory the output file is written in must be readable as well as writable. It is opened before the
+temporary file is created, so that the directory can be synced after the rename and the new directory entry survives a
+crash. A directory that cannot be opened for reading (for example a write-only drop-box directory) is therefore refused
+as a user error, even though creating a file in it would otherwise succeed.
 
 ### encrypt
 
@@ -164,6 +178,12 @@ untrusted source can legitimately cost up to the full ceiling (4 GiB of memory a
 authentication. The ceilings are wide so that files written with stronger-than-default parameters, by this or any other
 implementation, stay readable; they are a format constant, and lowering them would make existing files undecryptable.
 Users decrypting files from untrusted senders should expect that worst case, and readers must not tighten the ranges.
+
+If the machine cannot supply the memory key derivation needs (the header's m when decrypting or validating an update,
+256 MiB when encrypting), the user may get no error message at all: when that allocation fails, the process can be
+terminated outright, by an allocation abort or by the operating system's out-of-memory killer, before saltybox can
+report anything on standard error. The command still does not succeed, and since key derivation happens before any
+output is written, output files (including the existing file for `update`) are left unchanged.
 
 The AEAD associated data is the ASCII armor magic `saltybox2:` concatenated with the entire header (salt, m, t, p,
 nonce). A successful decrypt therefore proves the whole envelope — version identifier included — was untampered.
