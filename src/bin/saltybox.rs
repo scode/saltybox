@@ -83,9 +83,13 @@ fn main() -> ExitCode {
         Commands::Decrypt { input, output } => {
             file_ops::decrypt_file(&input, &output, &mut *reader)
         }
-        Commands::Update { input, output } => {
-            file_ops::update_file(&input, &output, &mut *reader, write_engine)
-        }
+        Commands::Update { input, output } => file_ops::update_file(
+            &input,
+            &output,
+            &mut *reader,
+            write_engine,
+            cli.passphrase_stdin,
+        ),
     };
 
     match result {
