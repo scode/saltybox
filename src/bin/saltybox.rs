@@ -84,7 +84,13 @@ fn main() -> ExitCode {
             file_ops::decrypt_file(&input, &output, &mut *reader)
         }
         Commands::Update { input, output } => {
-            file_ops::update_file(&input, &output, &mut *reader, write_engine)
+            let input_check = if cli.passphrase_stdin {
+                file_ops::check_update_stdin_input(&input)
+            } else {
+                Ok(())
+            };
+            input_check
+                .and_then(|()| file_ops::update_file(&input, &output, &mut *reader, write_engine))
         }
     };
 

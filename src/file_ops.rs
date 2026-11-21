@@ -137,6 +137,8 @@ pub fn decrypt_file(
 /// never a partial/corrupted file.
 ///
 /// The passphrase validation prevents accidental passphrase changes.
+/// Callers using standard input for the passphrase must check that it differs
+/// from the replacement source before calling this function.
 ///
 /// The output format follows `write_engine` alone, never the existing file's
 /// format: updating with a different engine than the file was written with
@@ -198,18 +200,72 @@ fn update_paths_conflict(plain_path: &Path, crypt_path: &Path) -> bool {
 
 #[cfg(unix)]
 fn paths_are_same_inode(plain_path: &Path, crypt_path: &Path) -> bool {
-    use std::os::unix::fs::MetadataExt;
-
     matches!(
         (fs::metadata(plain_path), fs::metadata(crypt_path)),
         (Ok(plain_meta), Ok(crypt_meta))
-            if plain_meta.dev() == crypt_meta.dev() && plain_meta.ino() == crypt_meta.ino()
+            if same_file(&plain_meta, &crypt_meta)
     )
 }
 
 #[cfg(not(unix))]
 fn paths_are_same_inode(_plain_path: &Path, _crypt_path: &Path) -> bool {
     false
+}
+
+/// Compares Unix file identity across aliases, including redirected descriptors.
+#[cfg(unix)]
+fn same_file(first: &fs::Metadata, second: &fs::Metadata) -> bool {
+    use std::os::unix::fs::MetadataExt;
+
+    first.dev() == second.dev() && first.ino() == second.ino()
+}
+
+/// Rejects a replacement source also used by `--passphrase-stdin`.
+///
+/// The CLI calls this before `update_file` because the reader abstraction does
+/// not expose its source. Reading stdin can drain a pipe or make a regular
+/// passphrase file the new plaintext. Inspect the pathname without opening it
+/// and use a duplicate descriptor to inspect stdin without closing fd 0.
+#[cfg(unix)]
+pub fn check_update_stdin_input(path: &Path) -> Result<()> {
+    use std::os::fd::AsFd;
+
+    // Let the ordinary input read diagnose an inaccessible or missing path.
+    let Ok(input) = fs::metadata(path) else {
+        return Ok(());
+    };
+    let stdin = io::stdin()
+        .as_fd()
+        .try_clone_to_owned()
+        .and_then(|fd| fs::File::from(fd).metadata())
+        .map_err(|err| {
+            SaltyboxError::with_kind_and_source(
+                ErrorCategory::User,
+                ErrorKind::Io,
+                "failed to inspect standard input for update",
+                err,
+            )
+        })?;
+    let aliases_stdin = same_file(&input, &stdin);
+    // Darwin's descriptor paths can report a narrower inode number for pipes
+    // than fstat does. Compare the pathname view as well as the open file.
+    #[cfg(target_os = "macos")]
+    let aliases_stdin =
+        aliases_stdin || fs::metadata("/dev/fd/0").is_ok_and(|alias| same_file(&input, &alias));
+    if aliases_stdin {
+        return Err(SaltyboxError::with_kind(
+            ErrorCategory::User,
+            ErrorKind::Io,
+            "update requires separate sources for the passphrase and replacement input",
+        ));
+    }
+    Ok(())
+}
+
+/// Other platforms accept the input without the Unix descriptor check.
+#[cfg(not(unix))]
+pub fn check_update_stdin_input(_path: &Path) -> Result<()> {
+    Ok(())
 }
 
 /// Rejects output paths that cannot name a file, before any I/O touches them.

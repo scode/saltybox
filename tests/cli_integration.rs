@@ -938,6 +938,66 @@ fn test_update_identical_input_output_fails() {
     assert_eq!(decrypted_content, "Original content");
 }
 
+/// The replacement input must be independent of stdin when stdin supplies the passphrase.
+/// Both a pipe alias and a separately opened copy of the redirected pathname must leave ciphertext intact.
+#[cfg(unix)]
+#[test]
+fn test_update_rejects_reusing_passphrase_stdin() {
+    use std::time::{Duration, Instant};
+
+    let temp_dir = TempDir::new().unwrap();
+    let encrypted = temp_dir.path().join("existing.salty");
+    let passphrase_file = temp_dir.path().join("passphrase-source");
+    let stdin_alias = temp_dir.path().join("stdin-alias");
+    fs::write(&encrypted, V2_FIXTURE).unwrap();
+    fs::write(&passphrase_file, V2_FIXTURE_PASSPHRASE).unwrap();
+    std::os::unix::fs::symlink("/dev/fd/0", &stdin_alias).unwrap();
+
+    let assert_refused = |result: std::process::Output| {
+        assert!(!result.status.success());
+        let stderr = String::from_utf8_lossy(&result.stderr);
+        assert!(
+            stderr.contains("update requires separate sources"),
+            "{stderr}"
+        );
+        assert_eq!(fs::read_to_string(&encrypted).unwrap(), V2_FIXTURE);
+    };
+
+    for alias in ["/dev/stdin", "/dev/fd/0", stdin_alias.to_str().unwrap()] {
+        let mut child = Command::new(saltybox_bin())
+            .args(["--passphrase-stdin", "update", "-i", alias, "-o"])
+            .arg(&encrypted)
+            .stdin(Stdio::piped())
+            .stderr(Stdio::piped())
+            .spawn()
+            .unwrap();
+        // Keep the pipe open without writing. A child that tries to read the
+        // passphrase instead of rejecting the alias will wait for input.
+        let deadline = Instant::now() + Duration::from_secs(10);
+        while child.try_wait().unwrap().is_none() {
+            if Instant::now() >= deadline {
+                let _ = child.kill();
+                child.wait().unwrap();
+                panic!("update did not reject {alias:?} without reading stdin");
+            }
+            std::thread::sleep(Duration::from_millis(10));
+        }
+        assert_refused(child.wait_with_output().unwrap());
+    }
+    for alias in [Path::new("/dev/stdin"), passphrase_file.as_path()] {
+        assert_refused(
+            Command::new(saltybox_bin())
+                .args(["--passphrase-stdin", "update", "-i"])
+                .arg(alias)
+                .arg("-o")
+                .arg(&encrypted)
+                .stdin(fs::File::open(&passphrase_file).unwrap())
+                .output()
+                .unwrap(),
+        );
+    }
+}
+
 /// A missing input file fails with a nonzero exit, writes nothing, and
 /// reports the failure on stderr naming the path.
 ///
