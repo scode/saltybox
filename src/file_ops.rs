@@ -270,9 +270,9 @@ pub fn check_update_stdin_input(_path: &Path) -> Result<()> {
 
 /// Rejects output paths that cannot name a file, before any I/O touches them.
 ///
-/// Both cases are almost always a shell variable that expanded to empty, and
-/// both get a message that says so rather than whatever the first filesystem
-/// call would report. All three commands run this first, before reading
+/// Empty paths and trailing separators often come from unset shell variables.
+/// Dot components also name directories, including when `Path` normalizes one
+/// away. All three commands run this first, before reading
 /// input or prompting for a passphrase: it only looks at the argument, so a
 /// bad `-o` should fail before the user types a passphrase and waits out key
 /// derivation (and, for `update`, before the read of the existing file would
@@ -298,12 +298,9 @@ fn check_output_path(path: &Path) -> Result<()> {
     // empty path, it is usually an unset shell variable (`-o "$DIR/$NAME"`).
     // Checking the last encoded byte is sound because every separator is ASCII,
     // and bytes of multi-byte characters in UTF-8 and WTF-8 are always >= 0x80.
-    if path
-        .as_os_str()
-        .as_encoded_bytes()
-        .last()
-        .is_some_and(|&b| std::path::is_separator(char::from(b)))
-    {
+    let encoded = path.as_os_str().as_encoded_bytes();
+    let is_separator = |&byte: &u8| std::path::is_separator(char::from(byte));
+    if encoded.last().is_some_and(is_separator) {
         return Err(SaltyboxError::with_kind(
             ErrorCategory::User,
             ErrorKind::Io,
@@ -311,6 +308,15 @@ fn check_output_path(path: &Path) -> Result<()> {
                 "output path {} ends in a path separator, so it names a directory rather than a file (an unset shell variable at the end of the path, as in \"$DIR/$NAME\", produces this)",
                 path.display()
             ),
+        ));
+    }
+    // The final name must be checked before Path's component normalization
+    // can turn `dir/.` into `dir` and put the tempfile in dir's parent.
+    if matches!(encoded.rsplit(is_separator).next(), Some(b"." | b"..")) {
+        return Err(SaltyboxError::with_kind(
+            ErrorCategory::User,
+            ErrorKind::Io,
+            format!("output path {path:?} ends in '.' or '..', so it names a directory"),
         ));
     }
     Ok(())
@@ -332,10 +338,6 @@ fn write_file_secure(path: &Path, contents: &[u8]) -> Result<()> {
     // output path ultimately points to rather than the link itself.
     let resolved = resolve_output_symlink(path)?;
     let path = resolved.as_deref().unwrap_or(path);
-    // The empty path and trailing separators (including the root `/`) are
-    // rejected by `check_output_path`, so on Unix only a path such as `/.`,
-    // whose final component `Path` normalizes away, reaches this branch; it
-    // keeps the mechanical description.
     let output_dir = path.parent().ok_or_else(|| {
         SaltyboxError::with_kind(
             ErrorCategory::User,
@@ -1411,8 +1413,8 @@ mod tests {
     /// `-o` must not make the user type a passphrase and wait out key
     /// derivation first. The input path here does not exist, so a read before
     /// the check would surface as a read error instead, and the reader panics
-    /// if asked for a passphrase. Both the empty path and a trailing
-    /// separator are covered, for `encrypt`, `decrypt` and `update`.
+    /// if asked for a passphrase. Exercise the empty path, a trailing
+    /// separator, and final dot components through all three commands.
     #[test]
     fn test_bad_output_path_is_rejected_before_input_read_and_prompt() {
         struct PanickingReader;
@@ -1425,9 +1427,17 @@ mod tests {
         let temp_dir = TempDir::new().unwrap();
         let missing_input = temp_dir.path().join("missing-input");
         let trailing = temp_dir.path().join("nodir/");
+        let directory = temp_dir.path().join("dir");
+        fs::create_dir(&directory).unwrap();
+        let dot = directory.join(".");
+        let dot_dot = directory.join("..");
         for (output, expected) in [
             (Path::new(""), "empty output path is not allowed"),
             (trailing.as_path(), "ends in a path separator"),
+            (Path::new("."), "ends in '.' or '..'"),
+            (Path::new(".."), "ends in '.' or '..'"),
+            (dot.as_path(), "ends in '.' or '..'"),
+            (dot_dot.as_path(), "ends in '.' or '..'"),
         ] {
             let results = [
                 encrypt_with_default_engine(&missing_input, output, &mut PanickingReader),
@@ -1440,6 +1450,8 @@ mod tests {
                 assert!(std::error::Error::source(&err).is_none());
             }
         }
+        assert_eq!(fs::read_dir(directory).unwrap().count(), 0);
+        assert_eq!(fs::read_dir(temp_dir.path()).unwrap().count(), 1);
     }
 
     /// `update` rejects an output path ending in a separator with the same
