@@ -23,6 +23,10 @@ install-updater = true
 # Plan jobs to run in CI
 plan-jobs = ["./release-plan-tests"]
 
+# dist 0.31 defaults to macos-14 for Apple Silicon. GitHub retired that image.
+[dist.github-custom-runners]
+aarch64-apple-darwin = "macos-15"
+
 # Commit SHAs for the actions dist writes into release.yml, so regenerating the
 # workflow keeps them pinned as SPEC.md (Build integrity) requires. dist copies
 # each value verbatim after the `@`, so the ` # vX.Y.Z` suffix is deliberate: it
