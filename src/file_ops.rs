@@ -92,7 +92,7 @@ pub fn encrypt_file(
         .encrypt(&passphrase, &plaintext)
         .map_err(|e| e.with_context("encryption failed"))?;
     write_file_secure(output_path, armored.as_bytes())
-        .map_err(|e| e.with_context(format!("failed to write to {}", output_path.display())))
+        .map_err(|e| e.with_context(format!("failed to write to {output_path:?}")))
 }
 
 /// Decrypt a file with a passphrase
@@ -120,7 +120,7 @@ pub fn decrypt_file(
         .decrypt(&passphrase, &ciphertext)
         .map_err(|e| e.with_context("failed to decrypt"))?;
     write_file_secure(output_path, &plaintext)
-        .map_err(|e| e.with_context(format!("failed to write to {}", output_path.display())))
+        .map_err(|e| e.with_context(format!("failed to write to {output_path:?}")))
 }
 
 /// Update an encrypted file with new plaintext using the same passphrase
@@ -177,7 +177,7 @@ pub fn update_file(
         .encrypt(&passphrase, &new_plaintext)
         .map_err(|e| e.with_context("failed to encrypt"))?;
     write_file_secure(crypt_path, new_armored.as_bytes())
-        .map_err(|e| e.with_context(format!("failed to write to {}", crypt_path.display())))
+        .map_err(|e| e.with_context(format!("failed to write to {crypt_path:?}")))
 }
 
 /// Detects whether the update input and output refer to the same file.
@@ -272,7 +272,7 @@ pub fn check_update_stdin_input(_path: &Path) -> Result<()> {
 ///
 /// Empty paths and trailing separators often come from unset shell variables.
 /// Dot components also name directories, including when `Path` normalizes one
-/// away. All three commands run this first, before reading
+/// away. All three commands run this before reading
 /// input or prompting for a passphrase: it only looks at the argument, so a
 /// bad `-o` should fail before the user types a passphrase and waits out key
 /// derivation (and, for `update`, before the read of the existing file would
@@ -305,8 +305,7 @@ fn check_output_path(path: &Path) -> Result<()> {
             ErrorCategory::User,
             ErrorKind::Io,
             format!(
-                "output path {} ends in a path separator, so it names a directory rather than a file (an unset shell variable at the end of the path, as in \"$DIR/$NAME\", produces this)",
-                path.display()
+                "output path {path:?} ends in a path separator, so it names a directory rather than a file (an unset shell variable at the end of the path, as in \"$DIR/$NAME\", produces this)"
             ),
         ));
     }
@@ -356,12 +355,10 @@ fn write_file_secure(path: &Path, contents: &[u8]) -> Result<()> {
         // imply a write occurred. A missing directory is additionally a user
         // mistake (typoed output path) and gets a message saying so.
         let msg = if e.kind() == io::ErrorKind::NotFound {
-            format!("output directory {} does not exist", output_dir.display())
+            format!("output directory {output_dir:?} does not exist")
         } else {
             format!(
-                "failed to open output directory {} while preparing to write {}",
-                output_dir.display(),
-                path.display()
+                "failed to open output directory {output_dir:?} while preparing to write {path:?}"
             )
         };
         // The output directory is the user's choice, so any failure opening
@@ -375,7 +372,7 @@ fn write_file_secure(path: &Path, contents: &[u8]) -> Result<()> {
         SaltyboxError::with_kind_and_source(
             ErrorCategory::User,
             ErrorKind::Io,
-            format!("failed to create tempfile for {}", path.display()),
+            format!("failed to create tempfile for {path:?}"),
             e,
         )
     })?;
@@ -391,7 +388,7 @@ fn write_file_secure(path: &Path, contents: &[u8]) -> Result<()> {
         let err = SaltyboxError::with_kind_and_source(
             ErrorCategory::User,
             ErrorKind::Io,
-            format!("failed to rename to target file {}", path.display()),
+            format!("failed to rename to target file {path:?}"),
             error,
         );
         return Err(discard_tempfile(file, err));
@@ -404,7 +401,7 @@ fn write_file_secure(path: &Path, contents: &[u8]) -> Result<()> {
             SaltyboxError::with_kind_and_source(
                 ErrorCategory::Internal,
                 ErrorKind::Io,
-                format!("failed to sync directory after writing {}", path.display()),
+                format!("failed to sync directory after writing {path:?}"),
                 e,
             )
         })?;
@@ -439,14 +436,9 @@ fn resolve_output_symlink(path: &Path) -> Result<Option<PathBuf>> {
                 // it; for a chain this is the first hop.
                 let msg = match fs::read_link(path) {
                     Ok(target) => format!(
-                        "output path {} is a symlink to {}, which does not exist",
-                        path.display(),
-                        target.display()
+                        "output path {path:?} is a symlink to {target:?}, which does not exist"
                     ),
-                    Err(_) => format!(
-                        "output path {} is a symlink to a nonexistent file",
-                        path.display()
-                    ),
+                    Err(_) => format!("output path {path:?} is a symlink to a nonexistent file"),
                 };
                 Err(SaltyboxError::with_kind(
                     ErrorCategory::User,
@@ -457,7 +449,7 @@ fn resolve_output_symlink(path: &Path) -> Result<Option<PathBuf>> {
             Err(e) => Err(SaltyboxError::with_kind_and_source(
                 ErrorCategory::User,
                 ErrorKind::Io,
-                format!("failed to resolve output symlink {}", path.display()),
+                format!("failed to resolve output symlink {path:?}"),
                 e,
             )),
         },
@@ -486,7 +478,7 @@ fn fill_tempfile(temp_file: &mut NamedTempFile, path: &Path, contents: &[u8]) ->
         SaltyboxError::with_kind_and_source(
             ErrorCategory::Internal,
             ErrorKind::Io,
-            format!("failed to write {}", path.display()),
+            format!("failed to write {path:?}"),
             e,
         )
     })?;
@@ -495,7 +487,7 @@ fn fill_tempfile(temp_file: &mut NamedTempFile, path: &Path, contents: &[u8]) ->
         SaltyboxError::with_kind_and_source(
             ErrorCategory::Internal,
             ErrorKind::Io,
-            format!("failed to flush {}", path.display()),
+            format!("failed to flush {path:?}"),
             e,
         )
     })?;
@@ -503,7 +495,7 @@ fn fill_tempfile(temp_file: &mut NamedTempFile, path: &Path, contents: &[u8]) ->
         SaltyboxError::with_kind_and_source(
             ErrorCategory::Internal,
             ErrorKind::Io,
-            format!("failed to sync {}", path.display()),
+            format!("failed to sync {path:?}"),
             e,
         )
     })?;
@@ -557,9 +549,7 @@ fn discard_tempfile(temp_file: NamedTempFile, err: SaltyboxError) -> SaltyboxErr
         Ok(()) => err,
         Err(cleanup_err) if cleanup_err.kind() == io::ErrorKind::NotFound => err,
         Err(cleanup_err) => err.with_context(format!(
-            "failed to remove tempfile {} after the error below ({}); remove it by hand",
-            tempfile_path.display(),
-            cleanup_err
+            "failed to remove tempfile {tempfile_path:?} after the error below ({cleanup_err}); remove it by hand"
         )),
     }
 }
@@ -584,7 +574,7 @@ fn read_error(path: &Path, err: io::Error) -> SaltyboxError {
     SaltyboxError::with_kind_and_source(
         ErrorCategory::User,
         ErrorKind::Io,
-        format!("failed to read from {}", path.display()),
+        format!("failed to read from {path:?}"),
         err,
     )
 }
@@ -923,7 +913,8 @@ mod tests {
     }
 
     /// An output symlink whose target does not exist is refused as a user
-    /// error naming where the link points, and neither the target nor
+    /// error naming where the link points without printing its control characters.
+    /// Neither the target nor
     /// anything else is created. SPEC.md requires refusing rather than
     /// following the link to create its target.
     #[test]
@@ -931,7 +922,7 @@ mod tests {
     fn test_output_symlink_to_nonexistent_file_is_rejected() {
         let temp_dir = TempDir::new().unwrap();
         let plain_path = temp_dir.path().join("plain.txt");
-        let missing_target = temp_dir.path().join("missing.salty");
+        let missing_target = temp_dir.path().join("missing\u{1b}.salty");
         let link_path = temp_dir.path().join("dangling.salty");
 
         fs::write(&plain_path, b"payload").unwrap();
@@ -952,10 +943,13 @@ mod tests {
         }
         assert!(
             chain.contains(&format!(
-                "is a symlink to {}, which does not exist",
-                missing_target.display()
+                "is a symlink to {missing_target:?}, which does not exist"
             )),
             "chain: {chain}"
+        );
+        assert!(
+            !chain.contains('\u{1b}'),
+            "diagnostic contains a literal ESC"
         );
         let mut entries: Vec<_> = fs::read_dir(temp_dir.path())
             .unwrap()
@@ -1530,7 +1524,7 @@ mod tests {
         // context the encrypt path adds, so look for it in the chain.
         #[cfg(unix)]
         {
-            let expected = format!("output directory {} does not exist", output_dir.display());
+            let expected = format!("output directory {output_dir:?} does not exist");
             let mut source: Option<&(dyn std::error::Error + 'static)> = Some(&err);
             let mut found = false;
             while let Some(e) = source {

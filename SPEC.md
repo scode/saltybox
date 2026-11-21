@@ -56,7 +56,8 @@ that newline alone. Pipe the passphrase without one (`echo -n`, `printf '%s' "$P
 by older versions with a passphrase containing a line break undecryptable by these commands.
 
 On any failure, commands exit with a nonzero status and report the error on standard error. The one exception is a
-process killed for lack of memory during key derivation, which the saltybox2 section describes.
+process killed for lack of memory during key derivation, which the saltybox2 section describes. Diagnostics quote
+filesystem paths and show their control characters as escape sequences, including when naming a symbolic link target.
 
 Any I/O failure on a path the user supplied (an input file, the output file, or the output file's directory) is a user
 error: a missing file, a directory given where a file was expected, a permission denial, or an unwritable output
