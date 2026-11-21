@@ -48,12 +48,24 @@ Then proceed:
 6. Run `dprint fmt` to fix any formatting issues in the generated changelog.
 7. Verify the changelog heading exists: `rg -n "^## \[$VERSION\]" CHANGELOG.md`
 8. Create a release PR with commit message `chore: release $VERSION`. The PR must include `Cargo.toml`, `Cargo.lock`,
-   and `CHANGELOG.md`.
+   and `CHANGELOG.md`. Set `RELEASE_PR` to its PR number.
 9. **Stop and explicitly ask the user for confirmation before merging and tagging.** Do not silently wait -- tell the
    user you are ready to merge and tag, and ask them to confirm.
-10. Merge the PR: `gh pr merge <number> --squash`
-11. Sync and checkout main: `gt sync --all`, `gt checkout main`.
-12. Tag the merge commit and push: `git tag v$VERSION && git push origin v$VERSION`
+10. Merge the PR: `gh pr merge "$RELEASE_PR" --squash`
+11. Fetch main with `git fetch origin main` so the release PR's merge commit is available locally.
+12. Tag the release PR's squash merge commit. Another PR can land after the release PR merges, so the tag must use the
+    SHA GitHub recorded for the release PR.
+
+    ```sh
+    release_commit=$(gh pr view "$RELEASE_PR" --json state,mergeCommit \
+      --jq 'select(.state == "MERGED") | .mergeCommit.oid // empty') &&
+      test -n "$release_commit" &&
+      git merge-base --is-ancestor "$release_commit" origin/main &&
+      git tag "v$VERSION" "$release_commit" &&
+      git push origin "refs/tags/v$VERSION"
+    ```
+
+    If any command fails, stop and resolve the error before continuing.
 13. Watch the Release workflow: `gh run watch <run-id>`. Confirm it succeeds (dist plan, release-plan tests, artifact
     builds) and that the GitHub release has the four `saltybox-<target>.tar.xz` archives attached.
 14. Hand the tag to the tap: in `scode/homebrew-dist-tap`, run `cargo xtask update saltybox --tag v$VERSION` and open a
