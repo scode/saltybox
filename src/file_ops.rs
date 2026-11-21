@@ -7,10 +7,17 @@ use crate::error::{ErrorCategory, ErrorKind, Result, SaltyboxError};
 use crate::format;
 use crate::passphrase::PassphraseReader;
 use std::fs;
-use std::io::{self, Write};
-use std::path::{Path, PathBuf};
+use std::io::{self, Read, Write};
+use std::path::Path;
+#[cfg(not(any(target_os = "linux", target_os = "macos")))]
+use std::path::PathBuf;
 use tempfile::NamedTempFile;
 use zeroize::Zeroizing;
+
+#[cfg(any(target_os = "linux", target_os = "macos"))]
+mod output_path;
+#[cfg(any(target_os = "linux", target_os = "macos"))]
+use output_path::OutputDestination;
 
 const TEMPFILE_PREFIX: &str = ".saltybox-";
 const TEMPFILE_SUFFIX: &str = ".tmp";
@@ -74,6 +81,7 @@ pub fn encrypt_file(
     write_engine: &dyn format::FormatEngine,
 ) -> Result<()> {
     check_output_path(output_path)?;
+    let output = OutputDestination::resolve(output_path)?;
     let plaintext = Zeroizing::new(fs::read(input_path).map_err(|e| read_error(input_path, e))?);
     let passphrase = read_valid_passphrase(passphrase_reader)?;
     // A new file has nothing to check the passphrase against, so an
@@ -91,7 +99,7 @@ pub fn encrypt_file(
     let armored = write_engine
         .encrypt(&passphrase, &plaintext)
         .map_err(|e| e.with_context("encryption failed"))?;
-    write_file_secure(output_path, armored.as_bytes())
+    write_file_secure(&output, armored.as_bytes(), None)
         .map_err(|e| e.with_context(format!("failed to write to {output_path:?}")))
 }
 
@@ -110,6 +118,7 @@ pub fn decrypt_file(
     passphrase_reader: &mut dyn PassphraseReader,
 ) -> Result<()> {
     check_output_path(output_path)?;
+    let output = OutputDestination::resolve(output_path)?;
     let armored_bytes = fs::read(input_path).map_err(|e| read_error(input_path, e))?;
     let armored = String::from_utf8(armored_bytes)
         .map_err(|e| not_text_error("input file is not valid UTF-8", e))?;
@@ -119,7 +128,7 @@ pub fn decrypt_file(
     let plaintext = engine
         .decrypt(&passphrase, &ciphertext)
         .map_err(|e| e.with_context("failed to decrypt"))?;
-    write_file_secure(output_path, &plaintext)
+    write_file_secure(&output, &plaintext, None)
         .map_err(|e| e.with_context(format!("failed to write to {output_path:?}")))
 }
 
@@ -129,9 +138,10 @@ pub fn decrypt_file(
 /// 1. Decrypts the existing file at `crypt_path` to validate the passphrase
 /// 2. Reads new plaintext from `plain_path`
 /// 3. Encrypts the new plaintext with the validated passphrase
-/// 4. Atomically writes to `crypt_path` (tempfile + fsync + rename); a
-///    symlinked `crypt_path` is followed, so the file validated in step 1 is
-///    the file replaced here
+/// 4. Atomically writes to the same resolved directory and name. On Linux
+///    and macOS, check the destination still names the file opened in step 1
+///    immediately before rename. A concurrent replacement after that check
+///    can still win the race against rename.
 ///
 /// The atomic write ensures that either the old file or the new file exists,
 /// never a partial/corrupted file.
@@ -150,16 +160,21 @@ pub fn update_file(
     write_engine: &dyn format::FormatEngine,
 ) -> Result<()> {
     check_output_path(crypt_path)?;
-    // Prevent treating the existing ciphertext as new plaintext when paths alias.
-    if update_paths_conflict(plain_path, crypt_path) {
-        return Err(SaltyboxError::with_kind(
-            ErrorCategory::User,
-            ErrorKind::Io,
-            "input and output paths must be different for update",
-        ));
+    if plain_path == crypt_path {
+        return Err(update_input_conflict());
     }
 
-    let armored_bytes = fs::read(crypt_path).map_err(|e| read_error(crypt_path, e))?;
+    let output = OutputDestination::resolve(crypt_path)?;
+    let mut existing = output
+        .open_existing()
+        .map_err(|e| read_error(crypt_path, e))?;
+    if update_paths_conflict(plain_path, &output, &existing) {
+        return Err(update_input_conflict());
+    }
+    let mut armored_bytes = Vec::new();
+    existing
+        .read_to_end(&mut armored_bytes)
+        .map_err(|e| read_error(crypt_path, e))?;
     let armored = String::from_utf8(armored_bytes)
         .map_err(|e| not_text_error("encrypted file is not valid UTF-8", e))?;
     let passphrase = read_valid_passphrase(passphrase_reader)?;
@@ -176,40 +191,43 @@ pub fn update_file(
     let new_armored = write_engine
         .encrypt(&passphrase, &new_plaintext)
         .map_err(|e| e.with_context("failed to encrypt"))?;
-    write_file_secure(crypt_path, new_armored.as_bytes())
+    write_file_secure(&output, new_armored.as_bytes(), Some(&existing))
         .map_err(|e| e.with_context(format!("failed to write to {crypt_path:?}")))
 }
 
-/// Detects whether the update input and output refer to the same file.
-///
-/// Three alias classes are covered: identical paths, paths that canonicalize
-/// to the same target (symlinks, `..` traversal), and on Unix, distinct
-/// directory entries hardlinked to the same inode — which canonicalize to
-/// different paths and would slip past the first two checks.
-///
-/// This is a best-effort guard against the user clobbering their ciphertext,
-/// not a security boundary: it races against concurrent filesystem changes.
-fn update_paths_conflict(plain_path: &Path, crypt_path: &Path) -> bool {
-    plain_path == crypt_path
-        || matches!(
-            (fs::canonicalize(plain_path), fs::canonicalize(crypt_path)),
-            (Ok(canonical_plain), Ok(canonical_crypt)) if canonical_plain == canonical_crypt
-        )
-        || paths_are_same_inode(plain_path, crypt_path)
+fn update_input_conflict() -> SaltyboxError {
+    SaltyboxError::with_kind(
+        ErrorCategory::User,
+        ErrorKind::Io,
+        "input and output paths must be different for update",
+    )
 }
 
+/// Detects input aliases without resolving the original output path a second
+/// time. On Unix the file identity covers both symbolic and hard links.
 #[cfg(unix)]
-fn paths_are_same_inode(plain_path: &Path, crypt_path: &Path) -> bool {
+fn update_paths_conflict(
+    plain_path: &Path,
+    _output: &OutputDestination,
+    existing: &fs::File,
+) -> bool {
     matches!(
-        (fs::metadata(plain_path), fs::metadata(crypt_path)),
+        (fs::metadata(plain_path), existing.metadata()),
         (Ok(plain_meta), Ok(crypt_meta))
             if same_file(&plain_meta, &crypt_meta)
     )
 }
 
 #[cfg(not(unix))]
-fn paths_are_same_inode(_plain_path: &Path, _crypt_path: &Path) -> bool {
-    false
+fn update_paths_conflict(
+    plain_path: &Path,
+    output: &OutputDestination,
+    _existing: &fs::File,
+) -> bool {
+    matches!(
+        (fs::canonicalize(plain_path), fs::canonicalize(&output.path)),
+        (Ok(plain), Ok(encrypted)) if plain == encrypted
+    )
 }
 
 /// Compares Unix file identity across aliases, including redirected descriptors.
@@ -276,8 +294,7 @@ pub fn check_update_stdin_input(_path: &Path) -> Result<()> {
 /// input or prompting for a passphrase: it only looks at the argument, so a
 /// bad `-o` should fail before the user types a passphrase and waits out key
 /// derivation (and, for `update`, before the read of the existing file would
-/// fail with a generic read error). `write_file_secure` runs it again as a
-/// guard for any future caller.
+/// fail with a generic read error).
 fn check_output_path(path: &Path) -> Result<()> {
     // An empty path is almost always an unset shell variable, the same
     // mistake the empty-passphrase check guards against. It is caught here
@@ -321,54 +338,18 @@ fn check_output_path(path: &Path) -> Result<()> {
     Ok(())
 }
 
-/// Replaces a file through a private same-directory temporary file.
+/// Publishes complete owner-only output through the destination chosen before
+/// reading the passphrase. Cleanup and rename use that same destination.
 ///
-/// A symlinked `path` is followed to the file it ultimately points to, and
-/// that file is replaced; see [`resolve_output_symlink`].
-///
-/// Successful writes sync the tempfile contents on every platform; on Unix
-/// they additionally sync the containing directory so the replacement
-/// survives crashes that happen after rename returns. On Unix the resulting
-/// file mode is `0600`. Any failure after the tempfile is created removes it;
-/// if removal fails, the returned error names the tempfile.
-fn write_file_secure(path: &Path, contents: &[u8]) -> Result<()> {
-    check_output_path(path)?;
-    // Everything below writes next to, and renames onto, the file a symlinked
-    // output path ultimately points to rather than the link itself.
-    let resolved = resolve_output_symlink(path)?;
-    let path = resolved.as_deref().unwrap_or(path);
-    let output_dir = path.parent().ok_or_else(|| {
-        SaltyboxError::with_kind(
-            ErrorCategory::User,
-            ErrorKind::Io,
-            "output path has no parent directory",
-        )
-    })?;
-    let output_dir = if output_dir.as_os_str().is_empty() {
-        Path::new(".")
-    } else {
-        output_dir
-    };
-    #[cfg(unix)]
-    let output_dir_file = fs::File::open(output_dir).map_err(|e| {
-        // This open happens before anything is written, so neither message may
-        // imply a write occurred. A missing directory is additionally a user
-        // mistake (typoed output path) and gets a message saying so.
-        let msg = if e.kind() == io::ErrorKind::NotFound {
-            format!("output directory {output_dir:?} does not exist")
-        } else {
-            format!(
-                "failed to open output directory {output_dir:?} while preparing to write {path:?}"
-            )
-        };
-        // The output directory is the user's choice, so any failure opening
-        // it (missing, unreadable, not a directory) is a user error.
-        SaltyboxError::with_kind_and_source(ErrorCategory::User, ErrorKind::Io, msg, e)
-    })?;
-    let mut temp_file = create_tempfile(output_dir).map_err(|e| {
-        // Creating the tempfile is the first operation that depends on
-        // the output directory being writable, which is the user's
-        // environment (permissions, a read-only mount, a full disk).
+/// A failed write or validation leaves any existing output alone. A directory
+/// sync failure can occur after the rename, when the output is already in place.
+fn write_file_secure(
+    destination: &OutputDestination,
+    contents: &[u8],
+    existing: Option<&fs::File>,
+) -> Result<()> {
+    let path = &destination.path;
+    let mut temp_file = destination.create_tempfile().map_err(|e| {
         SaltyboxError::with_kind_and_source(
             ErrorCategory::User,
             ErrorKind::Io,
@@ -377,36 +358,85 @@ fn write_file_secure(path: &Path, contents: &[u8]) -> Result<()> {
         )
     })?;
 
-    if let Err(e) = fill_tempfile(&mut temp_file, path, contents) {
-        return Err(discard_tempfile(temp_file, e));
-    }
-    if let Err(tempfile::PersistError { error, file }) = temp_file.persist(path) {
-        // The rename target is the output path the user gave with `-o`, or the
-        // file it ultimately points to when it is a symlink; the realistic
-        // failure (it names an existing directory) is the user's mistake, so
-        // this is a user error per SPEC.md.
-        let err = SaltyboxError::with_kind_and_source(
-            ErrorCategory::User,
-            ErrorKind::Io,
-            format!("failed to rename to target file {path:?}"),
-            error,
-        );
-        return Err(discard_tempfile(file, err));
-    }
-    #[cfg(unix)]
+    if let Err(err) = fill_tempfile(&mut temp_file, path, contents)
+        .and_then(|()| destination.verify_for_save(existing))
     {
-        // `fill_tempfile`'s sync covers the bytes. The directory sync makes the
-        // rename itself durable so a crash cannot lose the new directory entry.
-        output_dir_file.sync_all().map_err(|e| {
-            SaltyboxError::with_kind_and_source(
-                ErrorCategory::Internal,
-                ErrorKind::Io,
-                format!("failed to sync directory after writing {path:?}"),
-                e,
-            )
-        })?;
+        return Err(discard_tempfile(destination, temp_file, err));
+    }
+    persist_tempfile(destination, temp_file)?;
+
+    #[cfg(any(target_os = "linux", target_os = "macos"))]
+    destination.directory.sync_all().map_err(|e| {
+        SaltyboxError::with_kind_and_source(
+            ErrorCategory::Internal,
+            ErrorKind::Io,
+            format!("failed to sync directory after writing {path:?}"),
+            e,
+        )
+    })?;
+    Ok(())
+}
+
+/// Rename uses the open directory on the platforms that pin output paths.
+fn persist_tempfile(destination: &OutputDestination, temp_file: NamedTempFile) -> Result<()> {
+    #[cfg(any(target_os = "linux", target_os = "macos"))]
+    if let Err(error) = destination.rename_tempfile(temp_file.path()) {
+        return Err(rename_error(destination, temp_file, error));
+    }
+    #[cfg(not(any(target_os = "linux", target_os = "macos")))]
+    if let Err(tempfile::PersistError { error, file }) = temp_file.persist(&destination.path) {
+        return Err(rename_error(destination, file, error));
     }
     Ok(())
+}
+
+fn rename_error(
+    destination: &OutputDestination,
+    temp_file: NamedTempFile,
+    error: io::Error,
+) -> SaltyboxError {
+    let err = SaltyboxError::with_kind_and_source(
+        ErrorCategory::User,
+        ErrorKind::Io,
+        format!("failed to rename to target file {:?}", destination.path),
+        error,
+    );
+    discard_tempfile(destination, temp_file, err)
+}
+
+/// Preserve the path-based writer on builds outside Linux and macOS, which
+/// do not have Saltybox's descriptor-relative output contract.
+#[cfg(not(any(target_os = "linux", target_os = "macos")))]
+struct OutputDestination {
+    path: PathBuf,
+}
+
+#[cfg(not(any(target_os = "linux", target_os = "macos")))]
+impl OutputDestination {
+    fn resolve(path: &Path) -> Result<Self> {
+        let path = resolve_output_symlink(path)?.unwrap_or_else(|| path.to_path_buf());
+        Ok(Self { path })
+    }
+
+    fn open_existing(&self) -> io::Result<fs::File> {
+        fs::File::open(&self.path)
+    }
+
+    fn create_tempfile(&self) -> io::Result<NamedTempFile> {
+        let parent = self
+            .path
+            .parent()
+            .filter(|entry| !entry.as_os_str().is_empty());
+        tempfile_builder().tempfile_in(parent.unwrap_or_else(|| Path::new(".")))
+    }
+
+    fn remove_tempfile(&self, path: &Path) -> io::Result<()> {
+        fs::remove_file(path)
+    }
+
+    fn verify_for_save(&self, _existing: Option<&fs::File>) -> Result<()> {
+        Ok(())
+    }
 }
 
 /// Resolves an output path that is a symbolic link to the file it ultimately
@@ -427,6 +457,7 @@ fn write_file_secure(path: &Path, contents: &[u8]) -> Result<()> {
 /// create the target, as SPEC.md requires. Hard links need no handling here;
 /// renaming onto one name simply leaves the file's other names with the old
 /// contents.
+#[cfg(not(any(target_os = "linux", target_os = "macos")))]
 fn resolve_output_symlink(path: &Path) -> Result<Option<PathBuf>> {
     match fs::symlink_metadata(path) {
         Ok(meta) if meta.file_type().is_symlink() => match fs::canonicalize(path) {
@@ -464,11 +495,10 @@ fn resolve_output_symlink(path: &Path) -> Result<Option<PathBuf>> {
 /// owner-only mode are part of SPEC.md's contract: a tempfile left behind by
 /// a crash has to be recognizable, and must not expose plaintext to other
 /// users while it exists.
-fn create_tempfile(output_dir: &Path) -> io::Result<NamedTempFile> {
-    tempfile::Builder::new()
-        .prefix(TEMPFILE_PREFIX)
-        .suffix(TEMPFILE_SUFFIX)
-        .tempfile_in(output_dir)
+fn tempfile_builder() -> tempfile::Builder<'static, 'static> {
+    let mut builder = tempfile::Builder::new();
+    builder.prefix(TEMPFILE_PREFIX).suffix(TEMPFILE_SUFFIX);
+    builder
 }
 
 /// Writes, flushes, syncs, and (on Unix) restricts the tempfile, so a rename
@@ -530,21 +560,20 @@ fn fill_tempfile(temp_file: &mut NamedTempFile, path: &Path, contents: &[u8]) ->
 /// removal to whoever ends up holding the handle, and does not run at all if
 /// the process exits without unwinding.
 ///
-/// The file is removed with `fs::remove_file` on the bare path rather than
-/// `NamedTempFile::close`, whose error text repeats the path; the message
-/// below names the path once and keeps the OS error's own wording, which is
-/// more specific than its `io::ErrorKind`. A tempfile that is already gone
-/// (`NotFound`) counts as removed.
-fn discard_tempfile(temp_file: NamedTempFile, err: SaltyboxError) -> SaltyboxError {
-    let (file, temp_path) = temp_file.into_parts();
+/// Use the destination's directory to remove the same temporary name even
+/// if the original path moved. A file that is already gone counts as removed.
+fn discard_tempfile(
+    destination: &OutputDestination,
+    temp_file: NamedTempFile,
+    err: SaltyboxError,
+) -> SaltyboxError {
+    let (file, mut temp_path) = temp_file.into_parts();
     drop(file);
-    let removal = fs::remove_file(&temp_path);
+    let removal = destination.remove_tempfile(&temp_path);
     // Disarm the `TempPath` destructor: removal was just attempted, and a
     // silent second attempt could only hide what the message below reports.
-    let tempfile_path = match temp_path.keep() {
-        Ok(path) => path,
-        Err(e) => e.path.to_path_buf(),
-    };
+    temp_path.disable_cleanup(true);
+    let tempfile_path = temp_path.to_path_buf();
     match removal {
         Ok(()) => err,
         Err(cleanup_err) if cleanup_err.kind() == io::ErrorKind::NotFound => err,
@@ -878,6 +907,123 @@ mod tests {
         assert_eq!(vault_entries, ["secret.salty"]);
     }
 
+    /// Makes the filesystem change between opening the encrypted file and saving it.
+    #[cfg(any(target_os = "linux", target_os = "macos"))]
+    struct RenameWhilePrompting<'a> {
+        from: &'a Path,
+        to: &'a Path,
+    }
+
+    #[cfg(any(target_os = "linux", target_os = "macos"))]
+    impl PassphraseReader for RenameWhilePrompting<'_> {
+        fn read_passphrase(&mut self) -> Result<Zeroizing<Vec<u8>>> {
+            fs::rename(self.from, self.to).unwrap();
+            Ok(Zeroizing::new(b"pw".to_vec()))
+        }
+    }
+
+    /// Replacing a parent link during an update cannot redirect publication.
+    /// The original destination is updated and the unrelated directory stays untouched.
+    #[cfg(any(target_os = "linux", target_os = "macos"))]
+    #[test]
+    fn test_update_keeps_resolved_directory_when_parent_link_changes() {
+        let temp = TempDir::new().unwrap();
+        let first = temp.path().join("first");
+        let second = temp.path().join("second");
+        let route = temp.path().join("route");
+        let changed_route = temp.path().join("changed-route");
+        let plaintext = temp.path().join("plaintext");
+        let original = first.join("secret.salty");
+        let untouched = second.join("secret.salty");
+        fs::create_dir(&first).unwrap();
+        fs::create_dir(&second).unwrap();
+        fs::write(&plaintext, b"original").unwrap();
+        let mut reader = ConstantPassphraseReader::new(b"pw".to_vec());
+        encrypt_with_default_engine(&plaintext, &original, &mut reader).unwrap();
+        fs::write(&untouched, b"other file").unwrap();
+        std::os::unix::fs::symlink("first", &route).unwrap();
+        std::os::unix::fs::symlink("second", &changed_route).unwrap();
+
+        fs::write(&plaintext, b"replacement").unwrap();
+        let mut reader = RenameWhilePrompting {
+            from: &changed_route,
+            to: &route,
+        };
+        update_with_default_engine(&plaintext, &route.join("secret.salty"), &mut reader).unwrap();
+
+        let decoded = temp.path().join("decoded");
+        let mut reader = ConstantPassphraseReader::new(b"pw".to_vec());
+        decrypt_file(&original, &decoded, &mut reader).unwrap();
+        assert_eq!(fs::read(decoded).unwrap(), b"replacement");
+        assert_eq!(fs::read(untouched).unwrap(), b"other file");
+    }
+
+    /// If the final name now holds a different file, the save must abort and
+    /// remove the temporary file while leaving the new entry alone.
+    #[cfg(any(target_os = "linux", target_os = "macos"))]
+    #[test]
+    fn test_update_rejects_a_replaced_final_entry() {
+        let temp = TempDir::new().unwrap();
+        let encrypted = temp.path().join("existing.salty");
+        let plaintext = temp.path().join("plaintext");
+        let incoming = temp.path().join("incoming");
+        fs::write(&plaintext, b"original").unwrap();
+        let mut reader = ConstantPassphraseReader::new(b"pw".to_vec());
+        encrypt_with_default_engine(&plaintext, &encrypted, &mut reader).unwrap();
+        fs::write(&incoming, b"keep me").unwrap();
+
+        let mut reader = RenameWhilePrompting {
+            from: &incoming,
+            to: &encrypted,
+        };
+        let err = update_with_default_engine(&plaintext, &encrypted, &mut reader).unwrap_err();
+        let cause = std::error::Error::source(&err).unwrap();
+        assert!(
+            cause
+                .to_string()
+                .contains("changed while preparing the update"),
+            "{err}"
+        );
+        assert_eq!(fs::read(encrypted).unwrap(), b"keep me");
+        assert_eq!(fs::read_dir(temp.path()).unwrap().count(), 2);
+    }
+
+    /// A pipe destination could block update or be overwritten by another
+    /// command. Reject it during destination preparation, even behind a link.
+    #[cfg(any(target_os = "linux", target_os = "macos"))]
+    #[test]
+    fn test_output_pipe_is_refused_without_replacement() {
+        use std::os::unix::fs::FileTypeExt;
+
+        let temp = TempDir::new().unwrap();
+        let pipe = temp.path().join("pipe");
+        let link = temp.path().join("link");
+        let missing_input = temp.path().join("missing");
+        assert!(
+            std::process::Command::new("mkfifo")
+                .arg(&pipe)
+                .status()
+                .unwrap()
+                .success()
+        );
+        std::os::unix::fs::symlink("pipe", &link).unwrap();
+
+        let mut reader = ConstantPassphraseReader::new(b"pw".to_vec());
+        for destination in [&pipe, &link] {
+            for result in [
+                encrypt_with_default_engine(&missing_input, destination, &mut reader),
+                decrypt_file(&missing_input, destination, &mut reader),
+                update_with_default_engine(&missing_input, destination, &mut reader),
+            ] {
+                let err = result.unwrap_err();
+                assert!(err.to_string().contains("is not a regular file"), "{err}");
+            }
+        }
+        assert!(fs::symlink_metadata(pipe).unwrap().file_type().is_fifo());
+        assert!(fs::symlink_metadata(link).unwrap().file_type().is_symlink());
+        assert_eq!(fs::read_dir(temp.path()).unwrap().count(), 2);
+    }
+
     /// A chain of symlinks is followed to the final file, which the output
     /// replaces, and every link in the chain survives. This is the
     /// "ultimate target" half of the SPEC.md rule: resolving only one level
@@ -1191,10 +1337,14 @@ mod tests {
     #[test]
     fn test_create_tempfile_is_private_and_named_per_spec() {
         let temp_dir = TempDir::new().unwrap();
-        let temp_file = create_tempfile(temp_dir.path()).unwrap();
+        let output = OutputDestination::resolve(&temp_dir.path().join("output")).unwrap();
+        let temp_file = output.create_tempfile().unwrap();
         let path = temp_file.path();
 
-        assert_eq!(path.parent().unwrap(), temp_dir.path());
+        assert_eq!(
+            fs::canonicalize(path.parent().unwrap()).unwrap(),
+            fs::canonicalize(temp_dir.path()).unwrap()
+        );
         let name = path.file_name().unwrap().to_str().unwrap();
         assert!(name.starts_with(".saltybox-"), "name: {name}");
         assert!(name.ends_with(".tmp"), "name: {name}");
@@ -1213,20 +1363,19 @@ mod tests {
     /// tempfile remove it; for `decrypt` a leftover would be a stray
     /// plaintext copy. The directory is inspected while `err` is alive on
     /// purpose: removal must happen at the failure site, not whenever the
-    /// error's owner drops it. The rename is forced to fail by making the
-    /// output path an existing directory. The check compares the directory's
+    /// error's owner drops it. Making a directory at the basename after
+    /// preparing the destination forces rename to fail. The check compares the directory's
     /// full contents so it does not depend on the tempfile naming scheme.
     #[test]
     fn test_failed_rename_removes_tempfile_and_is_user_error() {
         let temp_dir = TempDir::new().unwrap();
-        let plain_path = temp_dir.path().join("plain.txt");
         let crypt_path = temp_dir.path().join("occupied");
 
-        fs::write(&plain_path, b"secret").unwrap();
+        let destination = OutputDestination::resolve(&crypt_path).unwrap();
+        let tempfile = destination.create_tempfile().unwrap();
         fs::create_dir(&crypt_path).unwrap();
 
-        let mut reader = ConstantPassphraseReader::new(b"test".to_vec());
-        let err = encrypt_with_default_engine(&plain_path, &crypt_path, &mut reader)
+        let err = persist_tempfile(&destination, tempfile)
             .expect_err("expected rename onto a directory to fail");
 
         assert_eq!(err.category, ErrorCategory::User);
@@ -1247,7 +1396,7 @@ mod tests {
             .map(|entry| entry.unwrap().file_name().into_string().unwrap())
             .collect();
         entries.sort();
-        assert_eq!(entries, ["occupied", "plain.txt"]);
+        assert_eq!(entries, ["occupied"]);
     }
 
     /// When removing the tempfile after a failure itself fails, the error
@@ -1264,6 +1413,7 @@ mod tests {
         let temp_dir = TempDir::new().unwrap();
         let dir = temp_dir.path().join("locked");
         fs::create_dir(&dir).unwrap();
+        let destination = OutputDestination::resolve(&dir.join("output")).unwrap();
         let temp_file = NamedTempFile::new_in(&dir).unwrap();
         let tempfile_path = temp_file.path().to_path_buf();
 
@@ -1287,14 +1437,11 @@ mod tests {
             ErrorKind::Io,
             "failed to sync out.txt",
         );
-        let err = discard_tempfile(temp_file, original);
+        let err = discard_tempfile(&destination, temp_file, original);
         fs::set_permissions(&dir, original_permissions).unwrap();
 
         let msg = err.to_string();
-        assert!(
-            msg.contains(&tempfile_path.display().to_string()),
-            "msg: {msg}"
-        );
+        assert!(msg.contains(&format!("{tempfile_path:?}")), "msg: {msg}");
         assert!(msg.contains("remove it by hand"), "msg: {msg}");
         assert_eq!(err.category, ErrorCategory::Internal);
         let cause = std::error::Error::source(&err).expect("original failure as cause");
@@ -1308,6 +1455,7 @@ mod tests {
     #[test]
     fn test_discard_tempfile_treats_missing_file_as_removed() {
         let temp_dir = TempDir::new().unwrap();
+        let destination = OutputDestination::resolve(&temp_dir.path().join("output")).unwrap();
         let temp_file = NamedTempFile::new_in(temp_dir.path()).unwrap();
         fs::remove_file(temp_file.path()).unwrap();
 
@@ -1316,7 +1464,7 @@ mod tests {
             ErrorKind::Io,
             "failed to write out.txt",
         );
-        let err = discard_tempfile(temp_file, original);
+        let err = discard_tempfile(&destination, temp_file, original);
 
         assert_eq!(err.to_string(), "failed to write out.txt");
         assert!(std::error::Error::source(&err).is_none());

@@ -1,6 +1,8 @@
 //! Saltybox - Passphrase-based file encryption
 
-#![forbid(unsafe_code)]
+#![cfg_attr(not(target_os = "macos"), forbid(unsafe_code))]
+// macOS has one audited FFI call to read the target of an open symlink.
+#![cfg_attr(target_os = "macos", deny(unsafe_code))]
 
 pub mod error;
 pub mod file_ops;

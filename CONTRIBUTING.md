@@ -88,6 +88,8 @@ Then proceed:
    `dist-workspace.toml` supplies the SHAs; see SPEC.md Build integrity) and keep the local permission hardening: the
    workflow-level `contents` permission must be `read`, and only the tag-gated `host` job may request `contents: write`.
    Reapply the local publishing guard as well. The `host` job must depend directly on `custom-release-plan-tests` and
-   require its result to be `success`. Skipped artifact builds alone cannot distinguish a failed test run.
+   require its result to be `success`. Skipped artifact builds alone cannot distinguish a failed test run. Keep
+   `MACOSX_DEPLOYMENT_TARGET: "13.0"` in the local artifact build environment so the release binaries declare the macOS
+   version required by the output resolver.
 5. Ensure `.github/workflows/conventional-commit-pr-title.yml` exists.
 6. Ensure `cliff.toml` exists and is configured for Conventional Commit parsing.
