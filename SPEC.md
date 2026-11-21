@@ -143,6 +143,10 @@ encrypted plaintext from `<input>`, validating first that the passphrase matches
 accidental passphrase changes). `<input>` and `<existing>` must be different files; identical paths and aliases of the
 same file via symlinks or path traversal are rejected, and on Unix, hard-link aliases are rejected as well.
 
+On Unix, with `--passphrase-stdin`, the passphrase and the replacement input must come from different sources. `update`
+rejects paths that name the same file or pipe as standard input, including aliases such as `/dev/stdin` and paths to the
+regular file from which standard input was redirected. The encrypted file is left unchanged.
+
 The validation read decrypts `<existing>`, accepting the same formats as `decrypt` and failing in the same scenarios
 with the same classifications (messages may differ in how they name the input file). Any failure — including a wrong
 passphrase — aborts the update and leaves `<existing>` unchanged.

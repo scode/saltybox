@@ -7,7 +7,7 @@ use crate::error::{ErrorCategory, ErrorKind, Result, SaltyboxError};
 use crate::format;
 use crate::passphrase::PassphraseReader;
 use std::fs;
-use std::io::{self, Write};
+use std::io::{self, Read, Write};
 use std::path::{Path, PathBuf};
 use tempfile::NamedTempFile;
 use zeroize::Zeroizing;
@@ -137,6 +137,8 @@ pub fn decrypt_file(
 /// never a partial/corrupted file.
 ///
 /// The passphrase validation prevents accidental passphrase changes.
+/// When stdin supplies the passphrase, use the CLI flag to keep the passphrase
+/// and replacement independent without making readers expose their source.
 ///
 /// The output format follows `write_engine` alone, never the existing file's
 /// format: updating with a different engine than the file was written with
@@ -146,8 +148,12 @@ pub fn update_file(
     crypt_path: &Path,
     passphrase_reader: &mut dyn PassphraseReader,
     write_engine: &dyn format::FormatEngine,
+    passphrase_stdin: bool,
 ) -> Result<()> {
     check_output_path(crypt_path)?;
+    if passphrase_stdin {
+        check_update_stdin_path(plain_path)?;
+    }
     // Prevent treating the existing ciphertext as new plaintext when paths alias.
     if update_paths_conflict(plain_path, crypt_path) {
         return Err(SaltyboxError::with_kind(
@@ -169,8 +175,7 @@ pub fn update_file(
         .decrypt(&passphrase, &ciphertext)
         .map_err(|e| e.with_context("failed to decrypt"))?;
 
-    let new_plaintext =
-        Zeroizing::new(fs::read(plain_path).map_err(|e| read_error(plain_path, e))?);
+    let new_plaintext = read_update_plaintext(plain_path, passphrase_stdin)?;
     let new_armored = write_engine
         .encrypt(&passphrase, &new_plaintext)
         .map_err(|e| e.with_context("failed to encrypt"))?;
@@ -198,18 +203,95 @@ fn update_paths_conflict(plain_path: &Path, crypt_path: &Path) -> bool {
 
 #[cfg(unix)]
 fn paths_are_same_inode(plain_path: &Path, crypt_path: &Path) -> bool {
-    use std::os::unix::fs::MetadataExt;
-
     matches!(
         (fs::metadata(plain_path), fs::metadata(crypt_path)),
         (Ok(plain_meta), Ok(crypt_meta))
-            if plain_meta.dev() == crypt_meta.dev() && plain_meta.ino() == crypt_meta.ino()
+            if same_file(&plain_meta, &crypt_meta)
     )
 }
 
 #[cfg(not(unix))]
 fn paths_are_same_inode(_plain_path: &Path, _crypt_path: &Path) -> bool {
     false
+}
+
+/// Compares Unix file identity across aliases, including redirected descriptors.
+#[cfg(unix)]
+fn same_file(first: &fs::Metadata, second: &fs::Metadata) -> bool {
+    use std::os::unix::fs::MetadataExt;
+
+    first.dev() == second.dev() && first.ino() == second.ino()
+}
+
+/// Reads replacement data from the same handle whose identity was checked.
+///
+/// The pathname check avoids opening an alias that appeared during the
+/// prompt. The check on the open handle covers changes between lookup and
+/// open, before any of its bytes can be treated as plaintext.
+fn read_update_plaintext(path: &Path, passphrase_stdin: bool) -> Result<Zeroizing<Vec<u8>>> {
+    if passphrase_stdin {
+        check_update_stdin_path(path)?;
+    }
+    let mut input = fs::File::open(path).map_err(|err| read_error(path, err))?;
+    #[cfg(unix)]
+    if passphrase_stdin {
+        let metadata = input.metadata().map_err(|err| read_error(path, err))?;
+        reject_stdin_alias(&metadata)?;
+    }
+    let mut plaintext = Zeroizing::new(Vec::new());
+    input
+        .read_to_end(&mut plaintext)
+        .map_err(|err| read_error(path, err))?;
+    Ok(plaintext)
+}
+
+/// Rejects a known stdin alias before opening a pathname that may block.
+/// Leave missing or inaccessible paths for the ordinary input read to diagnose.
+#[cfg(unix)]
+fn check_update_stdin_path(path: &Path) -> Result<()> {
+    let Ok(input) = fs::metadata(path) else {
+        return Ok(());
+    };
+    reject_stdin_alias(&input)
+}
+
+/// Checks stdin without consuming bytes or taking ownership of fd 0.
+#[cfg(unix)]
+fn reject_stdin_alias(input: &fs::Metadata) -> Result<()> {
+    use std::os::fd::AsFd;
+
+    let stdin = io::stdin()
+        .as_fd()
+        .try_clone_to_owned()
+        .and_then(|fd| fs::File::from(fd).metadata())
+        .map_err(|err| {
+            SaltyboxError::with_kind_and_source(
+                ErrorCategory::User,
+                ErrorKind::Io,
+                "failed to inspect standard input for update",
+                err,
+            )
+        })?;
+    let aliases_stdin = same_file(input, &stdin);
+    // Darwin's descriptor paths can report a narrower inode number for pipes
+    // than fstat does. Compare the pathname view as well as the open file.
+    #[cfg(target_os = "macos")]
+    let aliases_stdin =
+        aliases_stdin || fs::metadata("/dev/fd/0").is_ok_and(|alias| same_file(input, &alias));
+    if aliases_stdin {
+        return Err(SaltyboxError::with_kind(
+            ErrorCategory::User,
+            ErrorKind::Io,
+            "update requires separate sources for the passphrase and replacement input",
+        ));
+    }
+    Ok(())
+}
+
+/// Other platforms accept the input without the Unix descriptor check.
+#[cfg(not(unix))]
+fn check_update_stdin_path(_path: &Path) -> Result<()> {
+    Ok(())
 }
 
 /// Rejects output paths that cannot name a file, before any I/O touches them.
@@ -571,6 +653,7 @@ mod tests {
             crypt_path,
             passphrase_reader,
             format::default_write_engine(),
+            false,
         )
     }
 
