@@ -1038,7 +1038,7 @@ fn test_decrypt_nonexistent_file_fails() {
     assert!(!output.exists());
     let stderr = String::from_utf8_lossy(&result.stderr);
     assert!(
-        stderr.contains(&format!("failed to read from {}", nonexistent.display())),
+        stderr.contains(&format!("failed to read from {nonexistent:?}")),
         "expected the read failure naming the missing path, got: {stderr}"
     );
 }
