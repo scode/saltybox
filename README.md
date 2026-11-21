@@ -87,9 +87,17 @@ has changed or becomes unavailable. In order to ensure that you are able to decr
 happen, the following steps are recommended:
 
 - Store a copy of the binary for your platform(s) in a safe place.
-- In a copy of the source code, run `cargo vendor` to download all necessary dependencies into the `vendor` directory.
-  Ensure saltybox builds with `cargo build --frozen --offline`. Then store a copy of the complete source tree (including
-  `vendor` and `Cargo.lock`) in a safe place.
+- In a fresh copy of the source, run `mkdir .cargo && cargo vendor --locked > .cargo/config.toml`. This stores the
+  dependencies in `vendor/` and tells Cargo where to find them.
+- Store the complete source tree, including `vendor/`, `.cargo/config.toml`, and `Cargo.lock`.
+- Extract the stored copy and test that it builds offline. Use a fresh Cargo cache and fresh build directories so
+  previously downloaded dependencies and build artifacts cannot hide an incomplete archive.
+
+  ```sh
+  recovery_build=$(mktemp -d) &&
+    CARGO_HOME="$recovery_build/home" CARGO_BUILD_BUILD_DIR="$recovery_build/build" \
+      cargo build --frozen --offline --target-dir "$recovery_build/target"
+  ```
 
 In an emergency need to decrypt data, this should maximize your chances of being able to do so without relying on
 external projects/people aside from the Rust language tools themselves remaining available.
