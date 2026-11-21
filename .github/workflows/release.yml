@@ -115,6 +115,8 @@ jobs:
     runs-on: ${{ matrix.runner }}
     container: ${{ matrix.container && matrix.container.image || null }}
     env:
+      # The output resolver uses the symlink descriptor API introduced in macOS 13.
+      MACOSX_DEPLOYMENT_TARGET: "13.0"
       GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       BUILD_MANIFEST_NAME: target/distrib/${{ join(matrix.targets, '-') }}-dist-manifest.json
     steps:
@@ -149,6 +151,28 @@ jobs:
           # Actually do builds and make zips and whatnot
           dist build ${{ needs.plan.outputs.tag-flag }} --print=linkage --output-format=json ${{ matrix.dist_args }} > dist-manifest.json
           echo "dist ran successfully"
+      - name: Verify macOS archives
+        if: contains(join(matrix.targets, ' '), '-apple-darwin')
+        env:
+          DIST_TARGETS: ${{ join(matrix.targets, ' ') }}
+        shell: bash
+        run: |
+          # Check what will ship. An SDK or linker override can make the
+          # packed executable disagree with the build environment.
+          binary=$(mktemp)
+          trap 'rm -f -- "$binary"' EXIT
+          read -r -a targets <<< "$DIST_TARGETS"
+          for target in "${targets[@]}"; do
+            [[ "$target" == *-apple-darwin ]] || continue
+            name="saltybox-$target"
+            tar -xOf "target/distrib/$name.tar.xz" "$name/saltybox" > "$binary"
+            metadata=$(vtool -show-build "$binary")
+            printf '%s\n' "$metadata"
+            if ! awk '$1 == "minos" { seen = 1; if ($2 !~ /^13\.0(\.0)?$/) bad = 1 } END { exit !(seen && !bad) }' <<< "$metadata"; then
+              printf '::error::%s must declare macOS 13.0 as its minimum OS\n' "$name"
+              exit 1
+            fi
+          done
       - id: cargo-dist
         name: Post-build
         # We force bash here just because github makes it really hard to get values up

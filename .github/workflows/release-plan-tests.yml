@@ -98,6 +98,14 @@ jobs:
           terms = [term.strip() for term in outer.split("&&")]
           if "||" in outer or "needs.custom-release-plan-tests.result == 'success'" not in terms:
               raise SystemExit("release host job must require release tests to succeed")
+
+          # dist regeneration can drop the deployment target and archive check.
+          _, start, end = next(job for job in job_ranges if job[0] == "build-local-artifacts")
+          build_job = lines[start:end]
+          if '      MACOSX_DEPLOYMENT_TARGET: "13.0"' not in build_job:
+              raise SystemExit("local artifact builds must declare macOS 13.0 as the deployment target")
+          if "      - name: Verify macOS archives" not in build_job:
+              raise SystemExit("local artifact builds must verify the deployment target in macOS archives")
           PY
       - name: cargo test --locked
         run: cargo test --locked --all-features --all-targets
@@ -106,6 +114,8 @@ jobs:
     if: startsWith(github.ref, 'refs/tags/')
     runs-on: macos-latest
     name: test macos-latest
+    env:
+      MACOSX_DEPLOYMENT_TARGET: "13.0"
     steps:
       - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
       - name: Setup Rust toolchain (stable)

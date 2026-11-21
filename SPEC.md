@@ -27,14 +27,16 @@ code; a commit SHA cannot be moved. The rule covers `uses:` references only: the
 and tools that workflow steps download and run are not covered. `AGENTS.md` describes how to upgrade a pinned action.
 
 A tagged release is published only after release-plan tests succeed. A failed, cancelled, or skipped test run blocks
-publication even when the artifact build jobs are skipped.
+publication even when the artifact build jobs are skipped. Pull requests and pushes to `main` run native macOS tests on
+Intel and Apple Silicon. Each packaged macOS binary must declare macOS 13.0 as its minimum OS before its archive can be
+uploaded for publication.
 
 ## Supported platforms
 
-saltybox is supported on Unix-like systems (Linux and macOS). Windows is not supported: the code may compile there, but
-no Windows binaries are released, nothing is tested on Windows, and the file-permission guarantees below are
-deliberately Unix-only. Output and temporary files written on Windows carry no access restriction beyond what the output
-directory grants.
+saltybox is supported on Linux and macOS 13 or later. Windows is not supported: the code may compile there, but no
+Windows binaries are released, nothing is tested on Windows, and the file-permission guarantees below are deliberately
+Unix-only. Output and temporary files written on Windows carry no access restriction beyond what the output directory
+grants.
 
 ## Commands
 
@@ -72,20 +74,33 @@ succeeded, the output has already been replaced — with complete contents — w
 write interrupted by a crash or a signal (such as Ctrl-C) may leave the temporary file (on Unix with owner-only
 permissions; name prefixed `.saltybox-`) behind in the output directory. Any failure the command itself detects after
 creating the temporary file, including a failed rename, removes it; if that removal also fails, the error names the
-temporary file so it can be removed by hand. Failures before the temporary file is created (such as an unusable output
-directory) leave nothing behind and are reported without implying a write took place; a nonexistent output directory is
-reported as such, an empty output path is rejected as such (like an empty passphrase, it almost always means an unset
-shell variable), and so is an output path that ends in a path separator, which can only name a directory
-(`-o "$DIR/$NAME"` with `NAME` unset produces one). A final `.` or `..` component also names a directory and is rejected
-before reading input, prompting for a passphrase, or creating a temporary file. On Unix the final output file mode is
-0600.
+temporary file so it can be removed by hand. If the output directory moved and its current path cannot be determined,
+the error identifies the file by name and gives the original path. Failures before the temporary file is created (such
+as an unusable output directory) leave nothing behind and are reported without implying a write took place; a
+nonexistent output directory is reported as such, an empty output path is rejected as such (like an empty passphrase, it
+almost always means an unset shell variable), and so is an output path that ends in a path separator, which can only
+name a directory (`-o "$DIR/$NAME"` with `NAME` unset produces one). A final `.` or `..` component also names a
+directory and is rejected before reading input, prompting for a passphrase, or creating a temporary file. On Unix the
+final output file mode is 0600.
 
 When the output path is a symbolic link, or a chain of them, commands follow it and replace the file it ultimately
 points to: the temporary file is created in that file's directory and renamed onto that file, and the link itself is
-left in place. The file `update` validates the passphrase against and the file it replaces are therefore always the same
-file. An output symlink whose target does not exist is rejected as a user error rather than followed to create the
-target. When writing, hard links get no special treatment: the output path's name is replaced like any other file, and
-other names for the old file keep its old contents.
+left in place. In a world-writable sticky directory, commands reject any symlink owned by neither the running account
+nor the directory owner. This rule applies to links in directory components as well as the final name. A dangling output
+link or a link cycle is a user error. A link with an empty target is dangling. An existing destination must be a regular
+file. A directory, named pipe, device, or other special entry is refused before reading or writing it. Commands recheck
+the resolved entry before creating the temporary file and again before renaming it. If the final component was a symlink
+and the resolved file is missing at either check, the command fails. A symlink in a directory component can still lead
+to a new output file. When writing, hard links get no special treatment. The output path's name is replaced, and other
+names for the old file keep its old contents.
+
+On Linux, commands reject symlinks on procfs and on mounts with `nosymfollow` anywhere in an output path. The kernel can
+attach a filesystem view to procfs links that their pathname text does not capture. On a `nosymfollow` mount the kernel
+permits reading the link's text and forbids traversal, so the output resolver must check the mount policy itself.
+
+On Linux, commands also refuse links in world-writable sticky directories when the reported owner is the kernel's
+fallback (overflow) UID. Linux reports the same UID for every owner that has no mapping in the running process's user
+namespace. If the configured fallback UID is unavailable, commands refuse links that require this ownership check.
 
 On Unix, the directory the output file is written in (for a symlinked output path, the directory of the file it points
 to) must be readable as well as writable. It is opened before the temporary file is created, so that the directory can
@@ -144,7 +159,9 @@ Failures are diagnosed per scenario, each with a distinct message:
 `saltybox update -i <input> -o <existing>` replaces the contents of the existing encrypted file `<existing>` with newly
 encrypted plaintext from `<input>`, validating first that the passphrase matches the existing file (preventing
 accidental passphrase changes). `<input>` and `<existing>` must be different files; identical paths and aliases of the
-same file via symlinks or path traversal are rejected, and on Unix, hard-link aliases are rejected as well.
+same file via symlinks or path traversal are rejected, and on Unix, hard-link aliases are rejected as well. On Unix,
+`update` checks the opened input and encrypted file again before reading replacement bytes, since the input path may
+have changed during the prompt.
 
 On Unix, with `--passphrase-stdin`, the passphrase and the replacement input must come from different sources. `update`
 rejects paths that name the same file or pipe as standard input, including aliases such as `/dev/stdin` and paths to the
@@ -157,6 +174,12 @@ passphrase — aborts the update and leaves `<existing>` unchanged.
 On successful validation, the new plaintext is encrypted with the validated passphrase and written atomically over
 `<existing>`, always in the current write format (saltybox2), regardless of the existing file's format. Updating a
 saltybox1 file therefore rewrites it as saltybox2: this is the intended migration path for upgrading old files.
+
+`update` resolves its output once and uses that same directory and name for the read and replacement. Moving an original
+symlink during the prompt or validation does not redirect the save. Before renaming the temporary file, `update` checks
+that the resolved name still refers to the file it validated and aborts if it detects a change. Another process can
+still replace that final filename between the check and rename. Avoid concurrent changes to the resolved file while
+updating it.
 
 ## File formats
 
