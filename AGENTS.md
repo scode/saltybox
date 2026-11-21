@@ -58,7 +58,8 @@ upgrade them by hand:
 
 The actions in `release.yml` are written by `dist`, which takes their SHAs from `[dist.github-action-commits]` in
 `dist-workspace.toml`. For those, update the SHA and version comment there and regenerate the workflow instead of
-editing `release.yml` by hand.
+editing `release.yml` by hand. Then reapply the local workflow patches listed in CONTRIBUTING.md's release preflight
+checklist.
 
 # Releasing
 
