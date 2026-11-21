@@ -17,7 +17,7 @@ jobs:
       - name: cargo generate-lockfile
         if: hashFiles('Cargo.lock') == ''
         run: cargo generate-lockfile
-      - name: verify release workflow permissions
+      - name: verify release publishing safeguards
         run: |
           python3 - <<'PY'
           from pathlib import Path
@@ -76,6 +76,26 @@ jobs:
               raise SystemExit(
                   f"expected only the host job to request contents: write, got {write_jobs}"
               )
+          # dist does not generate the local test gate. Catch either half
+          # going missing when the generated workflow is refreshed.
+          _, start, end = next(job for job in job_ranges if job[0] == "host")
+          host_job = lines[start:end]
+          needs_start = host_job.index("    needs:")
+          needs = []
+          for line in host_job[needs_start + 1:]:
+              if not line.startswith("      - "):
+                  break
+              needs.append(line.removeprefix("      - "))
+          if "custom-release-plan-tests" not in needs:
+              raise SystemExit("release host job must depend directly on release tests")
+          condition = next(line for line in host_job if line.startswith("    if:"))
+          condition = condition.removeprefix("    if: ${{").removesuffix("}}")
+          # Artifact statuses use parenthesized alternatives. The test guard
+          # must be a required term of the outer conjunction.
+          outer = re.sub(r"\([^()]*\)", "", condition)
+          terms = [term.strip() for term in outer.split("&&")]
+          if "||" in outer or "needs.custom-release-plan-tests.result == 'success'" not in terms:
+              raise SystemExit("release host job must require release tests to succeed")
           PY
       - name: cargo test --locked
         run: cargo test --locked --all-features --all-targets

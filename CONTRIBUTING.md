@@ -87,5 +87,7 @@ Then proceed:
    After generation, check that every action is still pinned by commit SHA (`[dist.github-action-commits]` in
    `dist-workspace.toml` supplies the SHAs; see SPEC.md Build integrity) and keep the local permission hardening: the
    workflow-level `contents` permission must be `read`, and only the tag-gated `host` job may request `contents: write`.
+   Reapply the local publishing guard as well. The `host` job must depend directly on `custom-release-plan-tests` and
+   require its result to be `success`. Skipped artifact builds alone cannot distinguish a failed test run.
 5. Ensure `.github/workflows/conventional-commit-pr-title.yml` exists.
 6. Ensure `cliff.toml` exists and is configured for Conventional Commit parsing.
