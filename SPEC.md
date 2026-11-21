@@ -75,7 +75,9 @@ temporary file so it can be removed by hand. Failures before the temporary file 
 directory) leave nothing behind and are reported without implying a write took place; a nonexistent output directory is
 reported as such, an empty output path is rejected as such (like an empty passphrase, it almost always means an unset
 shell variable), and so is an output path that ends in a path separator, which can only name a directory
-(`-o "$DIR/$NAME"` with `NAME` unset produces one). On Unix the final output file mode is 0600.
+(`-o "$DIR/$NAME"` with `NAME` unset produces one). A final `.` or `..` component also names a directory and is rejected
+before reading input, prompting for a passphrase, or creating a temporary file. On Unix the final output file mode is
+0600.
 
 When the output path is a symbolic link, or a chain of them, commands follow it and replace the file it ultimately
 points to: the temporary file is created in that file's directory and renamed onto that file, and the link itself is
