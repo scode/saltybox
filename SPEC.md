@@ -26,6 +26,9 @@ branch can be moved by whoever controls the action's repository, and every later
 code; a commit SHA cannot be moved. The rule covers `uses:` references only: the Rust toolchain version, runner images,
 and tools that workflow steps download and run are not covered. `AGENTS.md` describes how to upgrade a pinned action.
 
+A tagged release is published only after release-plan tests succeed. A failed, cancelled, or skipped test run blocks
+publication even when the artifact build jobs are skipped.
+
 ## Supported platforms
 
 saltybox is supported on Unix-like systems (Linux and macOS). Windows is not supported: the code may compile there, but
